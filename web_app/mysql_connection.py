@@ -9,7 +9,8 @@ load_dotenv()
 #資料庫連線設定
 DB_CONFIG = {
     'host': os.getenv('DB_HOST'),
-    'port': int(os.getenv('DB_PORT')),
+    # getenv()的default設為None，但int()不接受None值
+    'port': int(os.getenv('DB_PORT', 'DB_PORT_DEFAULT')), 
     'user': os.getenv('DB_USER'),
     'password': os.getenv('DB_PASSWORD'),
     'database': os.getenv('DB_NAME'),
