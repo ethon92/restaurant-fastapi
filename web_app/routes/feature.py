@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from web_app.models.feature import FavoriteRestaurant
 from web_app.mysql_connection import get_db_cursor
 import pymysql
