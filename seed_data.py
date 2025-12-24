@@ -2,71 +2,69 @@ import pandas as pd
 from sqlalchemy import create_engine
 import os
 from urllib.parse import quote_plus
+from dotenv import load_dotenv
 
-# ==========================================
-# 1. 設定 MySQL 連線資訊 (請務必修改這裡！)
-# ==========================================
-DB_USER = "root"  # 通常是 root
-DB_PASSWORD = "As603@118"
-DB_HOST = "localhost"  # 本機
-DB_PORT = "3306"  # 預設 Port
-DB_NAME = "restaurant_food"  # 剛剛在 Workbench 建立的資料庫名稱
 
-# 建立連線引擎 (這是 Python 跟 MySQL 溝通的橋樑)
-# 建立連線引擎
+# 0. 載入環境變數
+load_dotenv()
+
+# 1. 設定 MySQL 連線資訊
+db_user = os.getenv("DB_USER")
+db_password = os.getenv("DB_PASSWORD")
+db_host = os.getenv("DB_HOST")
+db_port = os.getenv("DB_PORT")
+db_name = os.getenv("DB_NAME")
+
+if not all([db_user, db_password, db_host, db_port, db_name]):
+    print("❌ 錯誤：無法讀取資料庫設定，請檢查 .env 檔案。")
+    exit()
+
 try:
-    # ★★★ 關鍵修改：用 quote_plus 把密碼包起來，處理那個 @ 符號 ★★★
-    encoded_password = quote_plus(DB_PASSWORD)
-
-    # 注意：這裡的變數要換成 {encoded_password}
-    connection_str = f"mysql+pymysql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4"
-
+    encoded_password = quote_plus(db_password)
+    connection_str = f"mysql+pymysql://{db_user}:{encoded_password}@{db_host}:{db_port}/{db_name}?charset=utf8mb4"
     engine = create_engine(connection_str)
-
-    # 測試連線
+    
     with engine.connect() as conn:
-        print("✅ MySQL 連線成功！")
+        print(f"✅ MySQL 連線成功！")
 except Exception as e:
     print(f"❌ MySQL 連線失敗！\n錯誤訊息: {e}")
     exit()
 
-# ==========================================
-# 2. 讀取你的完美 CSV 檔案
-# ==========================================
-csv_filename = "Restaurant_Final.csv"
+# 2. 讀取 CSV 並刪除欄位
+csv_filename = "Restaurant_Final_Polished.csv" # 確保你已經改好檔名了
 
 if not os.path.exists(csv_filename):
     print(f"❌ 找不到檔案：{csv_filename}")
-    print("請確認這個 CSV 檔是否跟 seed_data.py 在同一個資料夾內！")
     exit()
 
 print("⏳ 正在讀取 CSV 檔案...")
 try:
-    # 讀取 CSV
     df = pd.read_csv(csv_filename, encoding="utf-8-sig")
 except:
-    # 萬一編碼有問題備用
     df = pd.read_csv(csv_filename, encoding="utf-8")
 
-# ==========================================
-# 3. 資料清理與寫入
-# ==========================================
-# 確保沒有重複的 ID
-df = df.drop_duplicates(subset=["RestaurantID"])
+# 關鍵修改：在這裡刪除不需要的欄位 ：定義你想刪除的欄位列表
+cols_to_drop = ['Images', 'TrafficInfo']
 
-# 定義要寫入的 Table 名稱 (通常叫 restaurants)
+# 使用 drop 指令，errors='ignore' 表示如果欄位本來就不存在也不會報錯
+df = df.drop(columns=cols_to_drop, errors='ignore')
+
+print(f"🗑️ 已嘗試刪除欄位: {cols_to_drop}")
+
+# 3. 寫入資料庫
+if "RestaurantID" in df.columns:
+    df = df.drop_duplicates(subset=["RestaurantID"])
+
 table_name = "restaurants"
-
-print(f"🔄 正在將 {len(df)} 筆餐廳資料灌入 MySQL 資料庫 ({DB_NAME})...")
+print(f"🔄 正在將 {len(df)} 筆資料匯入 MySQL...")
 
 try:
-    # if_exists='replace': 如果資料表已經存在，就刪掉重建 (保證資料最新)
-    # index=False: 不要把 pandas 的索引數字寫進去
+    # if_exists='replace' 會自動幫你重建表格 (所以舊的欄位會消失)
     df.to_sql(name=table_name, con=engine, if_exists="replace", index=False)
-
+    
     print("-" * 30)
-    print(f"🎉 大功告成！資料已全部匯入！")
-    print(f"請打開 MySQL Workbench，查詢 `{table_name}` 資料表看看成果吧！")
+    print(f"🎉 大功告成！資料表 `{table_name}` 已更新。")
+    print(f"Images 和 TrafficInfo 欄位已成功移除！")
     print("-" * 30)
 
 except Exception as e:
