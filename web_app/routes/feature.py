@@ -13,7 +13,7 @@ def create_table(cursor):
         create table favorite(
             fav_id int primary key auto_increment,
             user_id int not null,
-            restaurant_id int not null,
+            restaurant_id varchar(50) not null,
             fav_note varchar(300)
         )
         """
@@ -61,6 +61,25 @@ def get_favorite(user_id: Annotated[int, Path(title="The ID of user", gt=0)]):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
     
-
+# 刪除收藏餐廳路由
+@router.delete("/favorite/{user_id}/{restaurant_id}")
+def delete_favorite(user_id: Annotated[int, Path(title="The ID of user", gt=0)], restaurant_id: str):
+    try:
+        with get_db_cursor(commit=True) as cursor:
+            # 檢查此筆資料是否存在
+            cursor.execute("select * from favorite where user_id=%s and restaurant_id=%s", (user_id, restaurant_id))
+            result = cursor.fetchone()
+            # 若不存在丟出404錯誤
+            if not result:
+                raise HTTPException(status_code=404, detail="沒有此筆資料!!", headers={"status-code": "404"})
+            delete_sql="delete from favorite where user_id=%s and restaurant_id=%s"
+            cursor.execute(delete_sql, (user_id, restaurant_id))
+            return {
+                "status": "Success",
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
 
         
