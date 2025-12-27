@@ -81,3 +81,24 @@ def delete_favorite(user_id: Annotated[int, Path(title="The ID of user", gt=0)],
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
+
+# 更新收藏餐廳路由
+@router.put("/favorite")
+def update_favorite(update: FavoriteRestaurant):
+    try:
+        with get_db_cursor(commit=True) as cursor:
+            # 檢查此筆資料是否存在
+            cursor.execute("select * from favorite where user_id=%s and restaurant_id=%s", (update.user_id, update.restaurant_id))
+            result = cursor.fetchone()
+            # 若不存在丟出404錯誤
+            if not result:
+                raise HTTPException(status_code=404, detail="沒有此筆資料!!")     
+            update_sql="update favorite set fav_note=%s where user_id=%s and restaurant_id=%s"
+            cursor.execute(update_sql, (update.fav_note, update.user_id, update.restaurant_id))
+            return {
+                "status": "Success",
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
