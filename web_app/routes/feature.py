@@ -71,7 +71,7 @@ def delete_favorite(user_id: Annotated[int, Path(title="The ID of user", gt=0)],
             result = cursor.fetchone()
             # 若不存在丟出404錯誤
             if not result:
-                raise HTTPException(status_code=404, detail="沒有此筆資料!!", headers={"status-code": "404"})
+                raise HTTPException(status_code=404, detail="沒有此筆資料!!")
             delete_sql="delete from favorite where user_id=%s and restaurant_id=%s"
             cursor.execute(delete_sql, (user_id, restaurant_id))
             return {
@@ -81,5 +81,3 @@ def delete_favorite(user_id: Annotated[int, Path(title="The ID of user", gt=0)],
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
-
-        
