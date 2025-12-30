@@ -24,7 +24,7 @@ def create_table(cursor):
     if result is None:
         try:
             cursor.execute(create_query)
-            print(f"favorite table is created!!")
+            print("favorite table is created!!")
         except pymysql.Error as e:
             print(f"Error create favorite table: {e}")
 
