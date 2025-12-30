@@ -9,7 +9,7 @@ router = APIRouter()
 
 # 建立table函式
 def create_table(cursor):
-    create_query = f"""
+    create_query = """
         create table favorite(
             fav_id int primary key auto_increment,
             user_id int not null,
