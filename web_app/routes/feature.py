@@ -36,11 +36,20 @@ def add_favorite(favorite: FavoriteRestaurant):
         # 注意:提交資料要commit記得設為True
         with get_db_cursor(commit=True) as cursor:
             create_table(cursor)
+            # 檢查此筆資料是否存在
+            cursor.execute("select * from favorite where user_id=%s and restaurant_id=%s", (favorite.user_id, favorite.restaurant_id))
+            result = cursor.fetchone()
+            # 若已加入丟出409錯誤
+            if result is not None:
+                raise HTTPException(status_code=409, detail="已加入收藏餐廳中!!")
+            
             sql = "insert into favorite(user_id, restaurant_id, fav_note) values(%s, %s, %s)"           
             cursor.execute(sql, (favorite.user_id, favorite.restaurant_id, favorite.fav_note))           
             return {
                 "status": "Success"
             }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
 
