@@ -59,7 +59,11 @@ def add_favorite(favorite: FavoriteRestaurant):
 def get_favorite(user_id: Annotated[int, Path(title="The ID of user", gt=0)]):
     try:
         with get_db_cursor() as cursor:
-            sql = "select * from favorite where user_id=%s"
+            sql = """
+                select fav_id, user_id, fav_note, RestaurantName, CoverImage 
+                from favorite join restaurants on restaurant_id = RestaurantID 
+                where user_id =%s
+            """
             cursor.execute(sql, (user_id))
             results = cursor.fetchall()
         return {
