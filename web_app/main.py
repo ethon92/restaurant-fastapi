@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from web_app.routes.feature import router as favorite_router
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
@@ -19,3 +20,5 @@ def root():
 
 
 app.include_router(favorite_router)
+# 在根路由上掛載靜態檔案
+app.mount("/", StaticFiles(directory="public"), name="static")
