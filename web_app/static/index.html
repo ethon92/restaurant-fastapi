@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> 2025 台灣美食預約</title>
+    <style>
+        :root {
+            --primary-color: #ff6b6b;
+            --primary-dark: #e05555;
+            --bg-color: #f8f9fa;
+            --text-color: #333;
+            --border-color: #eee;
+        }
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 20px;
+            color: var(--text-color);
+        }
+
+        h1 { text-align: center; margin-bottom: 30px; color: #444; }
+
+        /* --- 佈局容器 --- */
+        .main-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            gap: 30px;
+        }
+
+        /* --- 左側篩選欄 --- */
+        .sidebar {
+            flex: 0 0 280px; 
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+            height: fit-content;
+        }
+
+        .filter-section {
+            margin-bottom: 25px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 20px;
+        }
+        .filter-section:last-child { border-bottom: none; }
+
+        .filter-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .checkbox-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr; 
+            gap: 10px;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            font-size: 0.95rem;
+            color: #555;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .checkbox-label:hover { color: var(--primary-color); }
+
+        .checkbox-label input {
+            margin-right: 8px;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: var(--primary-color);
+        }
+
+        /* --- 價位按鈕樣式 --- */
+        .price-options {
+            display: flex;
+            gap: 10px;
+            justify-content: space-between;
+        }
+        .price-btn {
+            flex: 1;
+            padding: 10px 0;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            color: #666;
+            transition: all 0.2s;
+            text-align: center;
+        }
+        .price-btn:hover {
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+        .price-btn.active {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+            box-shadow: 0 2px 6px rgba(255, 107, 107, 0.4);
+        }
+
+        /* --- 右側內容區 --- */
+        .content-area { flex: 1; }
+
+        .search-box-wrapper {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        input#searchInput {
+            flex: 1;
+            padding: 12px 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            outline: none;
+        }
+        input#searchInput:focus { border-color: var(--primary-color); }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); }
+        
+        .card-img-container {
+            width: 100%;
+            height: 180px;
+            background-color: #f0f0f0;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card-img { width: 100%; height: 100%; object-fit: cover; }
+        .no-img-text { color: #aaa; font-weight: bold; }
+
+        .card-body { padding: 15px; }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+        .card-title { 
+            font-size: 1.1rem; 
+            font-weight: bold; 
+            color: #333; 
+            margin: 0;
+            line-height: 1.3;
+        }
+        .price-badge {
+            font-size: 1rem;
+            color: #e67e22; /* 橘色 */
+            font-weight: bold;
+            white-space: nowrap;
+            margin-left: 10px;
+        }
+
+        .card-tag { 
+            display: inline-block; 
+            background: #eee; 
+            padding: 2px 8px; 
+            border-radius: 4px; 
+            font-size: 0.8rem; 
+            color: #666;
+            margin-bottom: 8px;
+        }
+        .address { font-size: 0.85rem; color: #888; display: flex; align-items: center; gap: 5px;}
+
+        @media (max-width: 768px) {
+            .main-container { flex-direction: column; }
+            .sidebar { width: auto; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🍽️ 台北 2025 美食預約</h1>
+
+    <div class="main-container">
+        
+        <aside class="sidebar">
+            <div class="filter-section">
+                <div class="filter-title">地點 (縣市) <span style="font-size:0.8rem; color:#999;">(多選)</span></div>
+                <div class="checkbox-grid" id="locationFilters">
+                    <label style="color:#999;">載入中...</label>
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <div class="filter-title">菜式 / 食物類型</div>
+                <div class="checkbox-grid" id="cuisineFilters">
+                    <label class="checkbox-label"><input type="checkbox" value="中式料理">中式料理</label>
+                    <label class="checkbox-label"><input type="checkbox" value="台式料理">台式料理</label>
+                    <label class="checkbox-label"><input type="checkbox" value="日式料理">日式料理</label>
+                    <label class="checkbox-label"><input type="checkbox" value="美式料理">美式料理</label>
+                    
+                    <label class="checkbox-label"><input type="checkbox" value="義式料理">義式料理</label>
+                    <label class="checkbox-label"><input type="checkbox" value="法式料理">法式料理</label>
+                    <label class="checkbox-label"><input type="checkbox" value="韓式料理">韓式料理</label>
+                    <label class="checkbox-label"><input type="checkbox" value="泰式料理">泰式料理</label>
+                    <label class="checkbox-label"><input type="checkbox" value="越式料理">越式料理</label>
+                    <label class="checkbox-label"><input type="checkbox" value="印度料理">印度料理</label>
+                    <label class="checkbox-label"><input type="checkbox" value="西班牙料理">西班牙料理</label>
+                    
+                    <label class="checkbox-label"><input type="checkbox" value="火鍋">火鍋</label>
+                    <label class="checkbox-label"><input type="checkbox" value="燒烤">燒烤</label>
+                    <label class="checkbox-label"><input type="checkbox" value="海鮮">海鮮料理</label>
+                    <label class="checkbox-label"><input type="checkbox" value="素食">素食</label>
+                    <label class="checkbox-label"><input type="checkbox" value="甜點">甜點/咖啡</label>
+                    <label class="checkbox-label"><input type="checkbox" value="早午餐">早午餐</label>
+                    <label class="checkbox-label"><input type="checkbox" value="在地小吃">在地小吃</label>
+                    <label class="checkbox-label"><input type="checkbox" value="網美打卡">網美打卡</label>
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <div class="filter-title">人均消費 (可複選)</div>
+                <div class="price-options">
+                    <div class="price-btn" data-value="$" onclick="togglePrice(this)">$</div>
+                    <div class="price-btn" data-value="$$" onclick="togglePrice(this)">$$</div>
+                    <div class="price-btn" data-value="$$$" onclick="togglePrice(this)">$$$</div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="content-area">
+            <div class="search-box-wrapper">
+                <input type="text" id="searchInput" placeholder="輸入餐廳名稱、關鍵字...">
+            </div>
+
+            <div id="restaurantGrid" class="grid">
+                <p>資料載入中...</p>
+            </div>
+            <p id="resultCount" style="margin-top:20px; color:#666; text-align:right; font-size:0.9rem;"></p>
+        </main>
+    </div>
+
+<script>
+    let allRestaurants = []; 
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadData();
+    });
+
+    async function loadData() {
+        try {
+            const timestamp = new Date().getTime();
+            const response = await fetch(`/api/restaurants?t=${timestamp}`);
+            allRestaurants = await response.json();
+            
+            initLocationFilters(allRestaurants);
+
+            document.querySelectorAll('input[type="checkbox"]').forEach(box => {
+                box.addEventListener('change', performFilter);
+            });
+            document.getElementById('searchInput').addEventListener('input', performFilter);
+
+            renderGrid(allRestaurants); 
+
+        } catch (error) {
+            console.error("載入失敗:", error);
+            document.getElementById('restaurantGrid').innerHTML = "<p>無法讀取資料。</p>";
+        }
+    }
+
+    function initLocationFilters(data) {
+        const container = document.getElementById('locationFilters');
+        if(!container) return;
+        
+        const locations = new Set();
+        data.forEach(r => {
+            const city = r.City || ''; 
+            if (city && city !== 'nan') {
+                locations.add(city);
+            }
+        });
+
+        if (locations.size === 0) {
+            container.innerHTML = '<span style="font-size:0.8rem">無地點資料</span>';
+            return;
+        }
+
+        container.innerHTML = ''; 
+        Array.from(locations).sort().forEach(loc => {
+            const label = document.createElement('label');
+            label.className = 'checkbox-label';
+            label.innerHTML = `<input type="checkbox" value="${loc}">${loc}`;
+            container.appendChild(label);
+        });
+    }
+
+    function togglePrice(btn) {
+        btn.classList.toggle('active');
+        performFilter();
+    }
+
+    function performFilter() {
+        const keyword = document.getElementById('searchInput').value.toLowerCase();
+        
+        const checkedCuisines = Array.from(document.querySelectorAll('#cuisineFilters input:checked')).map(cb => cb.value);
+        const checkedLocations = Array.from(document.querySelectorAll('#locationFilters input:checked')).map(cb => cb.value);
+        const checkedPrices = Array.from(document.querySelectorAll('.price-btn.active')).map(btn => btn.dataset.value);
+
+        const filtered = allRestaurants.filter(r => {
+            const name = (r.Name || r.name || '').toLowerCase();
+            const addr = (r.Add || r.address || '').toLowerCase();
+            const tags = (r.TagsStr || r.category || '').toLowerCase();
+            const restPriceLevel = r.PriceLevel || '$';
+            const city = r.City || '';
+
+            // 1. 搜尋比對
+            const matchKeyword = !keyword || name.includes(keyword) || addr.includes(keyword) || tags.includes(keyword);
+
+            // 2. 菜式比對 (包含檢查)
+            let matchCuisine = true;
+            if (checkedCuisines.length > 0) {
+                matchCuisine = checkedCuisines.some(c => tags.includes(c));
+            }
+
+            // 3. 地點比對
+            let matchLocation = true;
+            if (checkedLocations.length > 0) {
+                matchLocation = checkedLocations.includes(city);
+            }
+            
+            // 4. 價位等級比對
+            let matchPrice = true;
+            if (checkedPrices.length > 0) matchPrice = checkedPrices.includes(restPriceLevel);
+
+            return matchKeyword && matchCuisine && matchLocation && matchPrice;
+        });
+
+        const countLabel = document.getElementById('resultCount');
+        if(countLabel) countLabel.innerText = `共 ${filtered.length} 筆結果`;
+
+        renderGrid(filtered);
+    }
+
+    function renderGrid(data) {
+        const grid = document.getElementById('restaurantGrid');
+        grid.innerHTML = ''; 
+
+        if (!data || data.length === 0) {
+            grid.innerHTML = '<p style="text-align:center; grid-column: 1/-1; color:#888;">找不到符合條件的餐廳 😅</p>';
+            return;
+        }
+
+        const displayData = data.slice(0, 100); 
+
+        displayData.forEach(rest => {
+            let imagePath = rest.CoverImage || rest.image || '';
+            if (imagePath && !imagePath.startsWith('/static') && !imagePath.startsWith('http')) {
+                imagePath = '/static' + imagePath;
+            }
+
+            const imgHTML = imagePath 
+                ? `<img src="${imagePath}" class="card-img" loading="lazy" onerror="this.onerror=null;this.parentNode.innerHTML='<span class=\'no-img-text\'>No Image</span>';">`
+                : `<span class="no-img-text">No Image</span>`;
+
+            const name = rest.Name || rest.name || '未命名';
+            const category = rest.TagsStr || rest.category || '';
+            const mainCategory = category.split(',')[0] || '美食';
+            const address = rest.Add || rest.address || '無地址';
+            const priceLevel = rest.PriceLevel || '';
+
+            const card = document.createElement('div');
+            card.className = 'card';
+            // 讓滑鼠移過去變成手指形狀，暗示可以點擊
+            card.style.cursor = 'pointer'; 
+            
+            card.innerHTML = `
+                <div class="card-img-container">${imgHTML}</div>
+                <div class="card-body">
+                    <div class="card-header">
+                        <div class="card-title">${name}</div>
+                        <span class="price-badge">${priceLevel}</span>
+                    </div>
+                    <span class="card-tag">${mainCategory}</span>
+                    <div class="address">📍 ${address}</div>
+                </div>
+            `;
+            
+            // 🔥【關鍵修正】點擊跳轉邏輯
+            card.onclick = function() {
+                console.log('準備跳轉到:', name);
+                // 這裡加上 /static/ 確保路徑正確
+                window.location.href = `/static/detail.html?name=${encodeURIComponent(name)}`;
+            };
+            
+            grid.appendChild(card);
+        });
+    }
+</script>
+
+</body>
+</html>
