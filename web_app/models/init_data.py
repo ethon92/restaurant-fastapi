@@ -4,7 +4,7 @@ import os
 import random
 import shutil
 
-# ================= 設定區 =================
+#  設定區 
 BASE_DIR = os.path.abspath('.')
 INPUT_CSV_PATH = os.path.join(BASE_DIR, 'Restaurant_Final_Polished.csv')
 HOME_DIR = os.path.expanduser('~')
@@ -13,7 +13,7 @@ OUTPUT_DIR = os.path.join(BASE_DIR, 'output_json')
 PROJECT_STATIC_IMAGE_DIR = os.path.join(BASE_DIR, 'static', 'image')
 BASE_IMAGE_URL_PREFIX = '/static/image'
 
-# ================= 標籤對照表 =================
+#  標籤對照表 
 TAG_MAPPING = {
     "中式料理": "chinese", "台式料理": "chinese", "日式料理": "japanese",
     "美式料理": "american", "義式料理": "italian", "法式料理": "french",
@@ -60,7 +60,7 @@ def run_generation():
         address = str(row.get('PostalAddress', ''))
         phone = str(row.get('Telephones', ''))
         
-        # 🔥【新增】讀取縣市與鄉鎮區
+        # 讀取縣市與鄉鎮區
         city = str(row.get('LocatedCity', '')).strip()  # 例如：台北市
         town = str(row.get('Town', '')).strip()         # 例如：大安區
         
@@ -106,7 +106,6 @@ def run_generation():
             "TagsStr": tags_str,
             "PriceLevel": price_level,
             "AvgPrice": avg_price,
-            # 🔥【新增】存入 JSON 的新欄位
             "City": city,
             "Town": town
         })
