@@ -4,9 +4,9 @@ import json
 import os
 from models.schema import ReservationRequest 
 
-router = APIRouter() # 👈 使用 APIRouter 而不是 FastAPI
+router = APIRouter() 
 
-# --- 把原本資料設定與變數搬過來 ---
+# --- 把設定與變數搬過來 ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # 注意路徑層級可能要調整
 DATA_DIR = os.path.join(BASE_DIR, "output_json")
 MAIN_JSON_PATH = os.path.join(DATA_DIR, "restaurants_main.json")
