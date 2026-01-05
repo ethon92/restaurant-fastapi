@@ -5,8 +5,9 @@ import random
 import shutil
 
 #  設定區 
-BASE_DIR = os.path.abspath('.')
-INPUT_CSV_PATH = os.path.join(BASE_DIR, 'Restaurant_Final_Polished.csv')
+current_file_path = os.path.abspath(__file__)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(current_file_path)))
+INPUT_CSV_PATH = os.path.join(BASE_DIR, 'web_app', 'Restaurant_Final_Polished.csv')
 HOME_DIR = os.path.expanduser('~')
 LOCAL_IMAGE_SOURCE_DIR = os.path.join(HOME_DIR, 'Desktop', 'Taipei2025', 'My_Data_Backup', 'image')
 OUTPUT_DIR = os.path.join(BASE_DIR, 'output_json')
@@ -134,6 +135,7 @@ def run_generation():
             cover_image = gallery[0]
 
         main_data.append({
+            "ID": row.get("RestaurantID", ""),
             "Name": name,
             "Description": description,
             "Add": address,
@@ -143,7 +145,12 @@ def run_generation():
             "PriceLevel": price_level,
             "AvgPrice": avg_price,
             "City": city,
-            "Town": town
+            "Town": town,
+            "ServiceTime": row.get("ServiceTimeInfo", ""),
+            "Parking": row.get("ParkingInfo", ""),
+            "Payment": row.get("PaymentMethods", ""),
+            "Website": row.get("WebsiteURL", ""),
+            "GoogleMap": row.get("GoogleMapLink", "")
         })
         
         gallery_data.append({

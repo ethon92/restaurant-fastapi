@@ -2,90 +2,130 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
 import json
 import os
-from models.schema import ReservationRequest 
+from threading import Lock
+from web_app.models.schema import ReservationRequest
 
-router = APIRouter() 
+router = APIRouter()
 
-# --- 把設定與變數搬過來 ---
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # 注意路徑層級可能要調整
+# --- 路徑設定 ---
+current_file_path = os.path.abspath(__file__)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(current_file_path)))
 DATA_DIR = os.path.join(BASE_DIR, "output_json")
 MAIN_JSON_PATH = os.path.join(DATA_DIR, "restaurants_main.json")
 GALLERY_JSON_PATH = os.path.join(DATA_DIR, "restaurants_gallery.json")
-RESERVATIONS_FILE = os.path.join(BASE_DIR, "reservations.json")
+RESERVATIONS_FILE = os.path.join(DATA_DIR, "reservations.json")
 
-# 資料變數初始化
-restaurants_db = []
-gallery_db = []
+class RestaurantSystem:
+    def __init__(self):
+        self.restaurants_db = []
+        self.gallery_db = []
+        self.id_to_restaurant = {}   
+        self.name_to_restaurant = {} 
+        self.lock = Lock()           
+        self.load_data()
 
-# 資料載入函式
-def load_data():
-    global restaurants_db, gallery_db
-    # 載入餐廳主資料
-    if os.path.exists(MAIN_JSON_PATH):
-        with open(MAIN_JSON_PATH, "r", encoding="utf-8") as f:
-            restaurants_db = json.load(f)
-        print(f"✅ [Router] 已載入 {len(restaurants_db)} 筆餐廳資料")
-    else:
-        print(f"❌ [Router] 找不到主資料檔：{MAIN_JSON_PATH}")
+    def load_data(self):
+        """初始化時載入所有 JSON 資料"""
+        if os.path.exists(MAIN_JSON_PATH):
+            with open(MAIN_JSON_PATH, "r", encoding="utf-8") as f:
+                self.restaurants_db = json.load(f)
+            # 建立索引：加快詳情頁查詢速度
+            self.name_to_restaurant = {r["Name"]: r for r in self.restaurants_db}
+            self.id_to_restaurant = {r.get("ID", ""): r for r in self.restaurants_db}
+            print(f"✅ [System] 已載入 {len(self.restaurants_db)} 筆餐廳資料")
+        
+        if os.path.exists(GALLERY_JSON_PATH):
+            with open(GALLERY_JSON_PATH, "r", encoding="utf-8") as f:
+                self.gallery_db = json.load(f)
+            print(f"✅ [System] 已載入相簿資料")
+    # 取得分頁清單 python slicing
+    def get_list(self, skip: int = 0, limit: int = 20):
+        """取得分頁清單"""
+        return self.restaurants_db[skip : skip + limit]
 
-    # 載入相簿資料
-    if os.path.exists(GALLERY_JSON_PATH):
-        with open(GALLERY_JSON_PATH, "r", encoding="utf-8") as f:
-            gallery_db = json.load(f)
-        print(f"✅ [Router] 已載入相簿資料")
+    def search(self, 
+               q: Optional[str] = None, 
+               tags: Optional[List[str]] = None, 
+               city: Optional[str] = None, 
+               price_level: Optional[str] = None):
+        results = self.restaurants_db
+        
+        # 1. 關鍵字過濾 (名稱、描述、地址)
+        if q:
+            keyword = q.strip().lower()
+            results = [
+                r for r in results 
+                if keyword in (str(r.get("Name", "")) + str(r.get("Description", "")) + str(r.get("Add", ""))).lower()
+            ]
+        
+        # 2. 縣市過濾
+        if city and city != "全部":
+            results = [r for r in results if r.get("City") == city]
+            
+        # 3. 價格等級過濾 (例如: "$", "$$", "$$$")
+        if price_level and price_level != "全部":
+            results = [r for r in results if r.get("PriceLevel") == price_level]
+            
+        # 4. 標籤過濾 (支援多選，採交集並去空白)
+        if tags:
+            search_tags = set(t.strip() for t in tags if t.strip())
+            filtered = []
+            for r in results:
+                # 把 multi tags 切開並去空轉為集合
+                db_tags_str = str(r.get("TagsStr", ""))
+                db_tags_set = set(t.strip() for t in db_tags_str.split(",") if t.strip())
+                
+                # 只要搜尋標籤與資料標籤有重疊就納入
+                if search_tags & db_tags_set:
+                    filtered.append(r)
+            results = filtered
+                
+        return results
 
-# 執行載入
-load_data()
+    def save_reservation(self, booking_data: dict):
+        """執行預約並存檔，加入 Lock 機制確保安全"""
+        with self.lock:
+            current_bookings = []
+            if os.path.exists(RESERVATIONS_FILE):
+                try:
+                    with open(RESERVATIONS_FILE, "r", encoding="utf-8") as f:
+                        current_bookings = json.load(f)
+                except:
+                    pass
+            
+            current_bookings.append(booking_data)
+            with open(RESERVATIONS_FILE, "w", encoding="utf-8") as f:
+                json.dump(current_bookings, f, ensure_ascii=False, indent=2)
 
-# API 路由區 
+# --- 實例化管理系統 (啟動引擎) ---
+sys = RestaurantSystem()
+
+# --- API 路由區 (外部定義) ---
 
 # 3. [全部餐廳列表]
 @router.get("/api/restaurants")  
-async def get_all_restaurants():
-    return restaurants_db
+async def get_all_restaurants(skip: int = 0, limit: int = 20):
+    return sys.get_list(skip, limit)
 
-# 4. [搜尋 API]
+# 4. [連動搜尋 API]
 @router.get("/api/search")      
-def search_restaurants(q: Optional[str] = None, tags: List[str] = Query(None)):
-    if not q and not tags:
-        return restaurants_db
-    
-    keyword = q.strip().lower() if q else ""
-    results = []
-    
-    for r in restaurants_db:
-        # 加上 str() 避免資料欄位缺失導致報錯
-        name = str(r.get("Name", "")).lower()
-        desc = str(r.get("Description", "")).lower()
-        address = str(r.get("Add", "")).lower()
-        r_tags_list = str(r.get("TagsStr", "")).split(",")
-        
-        match_keyword = True
-        match_tags = True
-        
-        if keyword:
-            all_text = name + desc + address + str(r.get("TagsStr", "")).lower()
-            if keyword not in all_text:
-                match_keyword = False
-        
-        if tags:
-            # 檢查標籤交集
-            if not (set(tags) & set(r_tags_list)):
-                match_tags = False
-        
-        if match_keyword and match_tags:
-            results.append(r)
-            
-    return results
+def search_restaurants(
+    q: Optional[str] = None, 
+    tags: List[str] = Query(None), 
+    city: Optional[str] = None, 
+    price_level: Optional[str] = None
+):
+    # 呼叫類別實例 sys 的 search 方法
+    return sys.search(q=q, tags=tags, city=city, price_level=price_level)
 
 # 5. [詳情 API]
 @router.get("/api/restaurant/{name}")  
 def get_restaurant_detail(name: str):
-    info = next((r for r in restaurants_db if r["Name"] == name), None)
+    info = sys.name_to_restaurant.get(name)
     if not info:
         raise HTTPException(status_code=404, detail="找不到此餐廳")
     
-    gallery_data = next((g for g in gallery_db if g["restaurant_id"] == name), None)
+    gallery_data = next((g for g in sys.gallery_db if g["restaurant_id"] == name), None)
     
     return {
         "info": info,
@@ -95,22 +135,11 @@ def get_restaurant_detail(name: str):
 # 6. [預約 API]
 @router.post("/api/book")  
 def make_reservation(booking: ReservationRequest):
-    current_bookings = []
-    # 讀取舊有預約
-    if os.path.exists(RESERVATIONS_FILE):
-        try:
-            with open(RESERVATIONS_FILE, "r", encoding="utf-8") as f:
-                current_bookings = json.load(f)
-        except:
-            pass
-            
-    # 新增預約
     new_data = booking.dict()
     new_data["status"] = "confirmed"
-    current_bookings.append(new_data)
     
-    # 寫入檔案
-    with open(RESERVATIONS_FILE, "w", encoding="utf-8") as f:
-        json.dump(current_bookings, f, ensure_ascii=False, indent=2)
-        
-    return {"status": "success", "message": f"預約成功！{booking.user_name} 先生/小姐"}
+    try:
+        sys.save_reservation(new_data)
+        return {"status": "success", "message": f"預約成功！{booking.user_name} 先生/小姐"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="預約失敗，請稍後再試")

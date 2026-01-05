@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Optional
 
 class ReservationRequest(BaseModel):
     restaurant_name: str
@@ -7,3 +8,4 @@ class ReservationRequest(BaseModel):
     date: str
     time: str
     people: int
+    note: Optional[str] = ""
