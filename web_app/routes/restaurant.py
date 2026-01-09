@@ -37,7 +37,7 @@ class RestaurantSystem:
         if os.path.exists(GALLERY_JSON_PATH):
             with open(GALLERY_JSON_PATH, "r", encoding="utf-8") as f:
                 self.gallery_db = json.load(f)
-            print(f"✅ [System] 已載入相簿資料")
+            print("✅ [System] 已載入相簿資料")
     # 取得分頁清單 python slicing
     def get_list(self, skip: int = 0, limit: int = 20):
         """取得分頁清單"""
@@ -90,7 +90,7 @@ class RestaurantSystem:
                 try:
                     with open(RESERVATIONS_FILE, "r", encoding="utf-8") as f:
                         current_bookings = json.load(f)
-                except:
+                except Exception:
                     pass
             
             current_bookings.append(booking_data)
@@ -142,4 +142,5 @@ def make_reservation(booking: ReservationRequest):
         sys.save_reservation(new_data)
         return {"status": "success", "message": f"預約成功！{booking.user_name} 先生/小姐"}
     except Exception as e:
+        print(f"Error occurred during reservation: {e}")
         raise HTTPException(status_code=500, detail="預約失敗，請稍後再試")
