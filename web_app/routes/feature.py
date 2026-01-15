@@ -32,12 +32,12 @@ def create_table(cursor):
 # 建立comment的table
 def create_comment_table(cursor):
     create_query = """
-    CREATE TABLE `comment` (
-        `comment_id` INTEGER PRIMARY KEY auto_increment,
-        `user_id` INTEGER NOT NULL,                     
-        `restaurant_id` INTEGER NOT NULL,             
-        `comment_content` VARCHAR(255),                 
-        `comment_time` DATETIME DEFAULT CURRENT_TIMESTAMP 
+    create table comment (
+        comment_id int primary key auto_increment,
+        user_id int not null,
+        restaurant_id varchar(50) not null,             
+        comment_content varchar(255) not null,                 
+        comment_time DATETIME DEFAULT CURRENT_TIMESTAMP 
     );
     """
     cursor.execute("show tables like %s", ("comment"))
@@ -144,7 +144,7 @@ def add_comment(comment:RestaurantComment):
     try:
         with get_db_cursor(commit=True) as cursor:
             create_table(cursor)
-            cursor.execute("select * from comment where user_id=%s and restaurant_id=%s",(comment.user_id, comment.Restaurant_id))
+            cursor.execute("select * from comment where user_id=%s and restaurant_id=%s",(comment.user_id, comment.restaurant_id))
             result = cursor.fetchone()
             if result is not None:
                 raise HTTPException(status_code=409, detail="已完成評論!!")
@@ -156,5 +156,5 @@ def add_comment(comment:RestaurantComment):
             }
     except HTTPException:
         raise
-    except Exception as event:
-        raise HTTPException(status_code=500, detail=f"資料庫錯誤:{event}") 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"資料庫錯誤:{e}") 
