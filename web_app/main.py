@@ -39,7 +39,3 @@ app.include_router(favorite_router)
 # 這行指令會自動把 search_restaurants 和 make_reservation 的功能掛載進來
 app.include_router(restaurant.router)
 
-# ================= 首頁路由 =================
-@app.get("/")
-async def read_index():
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
