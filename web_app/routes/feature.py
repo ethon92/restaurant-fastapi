@@ -30,24 +30,24 @@ def create_table(cursor):
             print(f"Error create favorite table: {e}")
             
 # 建立comment的table
-def create_comment_table(cursor):
-    create_query = """
-    create table comment (
+def create_comments_table(cursor):
+    create_query= """
+    create table comments(
         comment_id int primary key auto_increment,
         user_id int not null,
         restaurant_id varchar(50) not null,             
         comment_content varchar(255) not null,   
-        rating int not null check(rating >= 1 AND rating <= 5),              
-        comment_time DATETIME DEFAULT CURRENT_TIMESTAMP 
-    );
+        rating int not null check(rating >= 1 AND rating <= 5),
+        comment_time DATETIME DEFAULT CURRENT_TIMESTAMP               
+    )
     """
-    cursor.execute("show tables like %s", ("comment"))
+    cursor.execute("show tables like %s", ("comments"))
     result = cursor.fetchone()
     # 當沒有table時才建立
     if result is None:
         try:
             cursor.execute(create_query)
-            print("comment table is created!!")
+            print("comments table is created!!")
         except pymysql.Error as e:
             print(f"Error create comment table: {e}")
 
@@ -160,3 +160,20 @@ def add_comment(comment:RestaurantComment):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"資料庫錯誤:{e}") 
 
+@router.delete("/comment/{user_id}/{restaurant_id}")
+def delete_comment(user_id: Annotated[int, Path(tittle="The ID of user",gt=0)],restaurant_id: str):
+    try:
+        with get_db_cursor(commit=True) as cursor:
+            cursor.execute("select * from comment where user_id=%s and restaurant_id=%s",(user_id,restaurant_id))
+            result = cursor.fetchone()
+            if not result:
+                raise HTTPException(status_code=404, detail="沒有此筆資料!!")
+            delete_sql="delete from comment where user_id=%s and restaurant_id=%s"
+            cursor.execute(delete_sql, (user_id, restaurant_id))
+            return{
+                "status":"Success"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"資料庫錯誤:{e}")
