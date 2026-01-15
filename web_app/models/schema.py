@@ -1,12 +1,12 @@
 from pydantic import BaseModel
 from typing import Optional
-from datetime import date, time
 
 class ReservationRequest(BaseModel):
+    # 這些是必填欄位 (Required)
     restaurant_name: str
     user_name: str
     phone: str
-    date: date
-    time: time
-    people: int
+    email: str
+    party_size: int
+    booking_time: str
     note: Optional[str] = ""
