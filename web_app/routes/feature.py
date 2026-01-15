@@ -36,7 +36,8 @@ def create_comment_table(cursor):
         comment_id int primary key auto_increment,
         user_id int not null,
         restaurant_id varchar(50) not null,             
-        comment_content varchar(255) not null,                 
+        comment_content varchar(255) not null,   
+        rating int not null check(rating >= 1 AND rating <= 5),              
         comment_time DATETIME DEFAULT CURRENT_TIMESTAMP 
     );
     """
@@ -158,3 +159,4 @@ def add_comment(comment:RestaurantComment):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"資料庫錯誤:{e}") 
+
