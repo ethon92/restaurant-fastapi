@@ -1,31 +1,16 @@
 from fastapi import APIRouter
-from pydantic import BaseModel, EmailStr
+from web_app.models.member import (
+    LoginPayload,
+    RegisterPayload,
+    ForgotPasswordPayload,
+    VerifyIdentityPayload,
+    ResetPasswordPayload,
+)
+
+# 資料庫模型需要這行
+# from web_app.models import member
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-class LoginPayload(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class RegisterPayload(BaseModel):
-    email: EmailStr
-    password: str
-    birthday: str
-    
-class ForgotPasswordPayload(BaseModel):
-    email: EmailStr
-
-
-class VerifyIdentityPayload(BaseModel):
-    email: EmailStr
-    birthday: str
-
-
-class ResetPasswordPayload(BaseModel):
-    email: EmailStr
-    password: str
 
 
 @router.post("/login")
@@ -41,11 +26,18 @@ async def register(payload: RegisterPayload):
     return {"message": "register ok", "email": payload.email}
 
 
-
 @router.post("/forgot-password")
 async def forgot_password(payload: ForgotPasswordPayload):
     return {"message": "verify ok", "email": payload.email}
 
+
+@router.post("/verify-identity")
+async def verify_identity(payload: VerifyIdentityPayload):
+    return {
+        "message": "identity ok",
+        "email": payload.email,
+        "birthday": str(payload.birthday),
+    }
 
 
 @router.post("/reset-password")
