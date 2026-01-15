@@ -41,5 +41,9 @@ app.include_router(restaurant.router)
 
 # ================= 首頁路由 =================
 @app.get("/")
-async def read_index():
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+def root():
+    return {
+        'msg': 'hello!'
+    }
+# async def read_index():
+#     return FileResponse(os.path.join(STATIC_DIR, "index.html"))

@@ -31,7 +31,7 @@ except Exception as e:
     exit()
 
 # 2. 讀取 CSV 並刪除欄位
-csv_filename = "Restaurant_Final_Polished.csv" # 確保你已經改好檔名了
+csv_filename = "web_app/Restaurant_Final_Polished.csv" # 確保你已經改好檔名了
 
 if not os.path.exists(csv_filename):
     print(f"❌ 找不到檔案：{csv_filename}")
