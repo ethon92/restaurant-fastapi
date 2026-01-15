@@ -5,7 +5,11 @@ from dotenv import load_dotenv
 
 #載入環境變數
 load_dotenv()
-
+#檢驗連線
+print(f"--- Debug Start ---")
+print(f"DB_USER: {os.getenv('DB_USER')}")
+print(f"DB_HOST: {os.getenv('DB_HOST')}")
+print(f"--- Debug End ---")
 #資料庫連線設定
 DB_CONFIG = {
     'host': os.getenv('DB_HOST'),
