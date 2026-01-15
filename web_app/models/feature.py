@@ -9,3 +9,4 @@ class RestaurantComment(BaseModel):
     user_id: int
     restaurant_id: str
     comment_content: str
+    rating: int
