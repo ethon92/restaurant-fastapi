@@ -34,7 +34,7 @@ def get_comment(user_id:Annotated[int, Path(title="The ID of user", gt=0)]):
     try:
         with get_db_cursor() as cursor:
             sql = """
-                select comment_id, user_id, comment_content, RestaurantName, rating from comment 
+                select comment_id, user_id, comment_content, Name, rating from comment 
                 join restaurants on restaurant_id = RestaurantID where user_id=%s
                 """
             cursor.execute(sql,(user_id))
