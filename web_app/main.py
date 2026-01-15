@@ -39,3 +39,8 @@ app.include_router(favorite_router)
 # 這行指令會自動把 search_restaurants 和 make_reservation 的功能掛載進來
 app.include_router(restaurant.router)
 
+@app.get(/)
+def root():
+    return {
+        'msg':"HEllO, it's black window!"
+    }
