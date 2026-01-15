@@ -8,6 +8,7 @@ class LoginPayload(BaseModel):
 
 
 class RegisterPayload(BaseModel):
+    name: str
     email: EmailStr
     password: str
     birthday: date
