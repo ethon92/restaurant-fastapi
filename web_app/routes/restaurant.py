@@ -21,6 +21,18 @@ class RestaurantSystem:
                city: Optional[str] = None, 
                price_level: Optional[str] = None):
         """[DB] 搜尋功能 (動態 SQL 拼裝)"""
+        # 1. 檢查關鍵字 (排除 None 和 空字串)
+        has_q = q is not None and q.strip() != ""
+        # 2. 檢查地點 (排除 None 和 "全部")
+        has_city = city is not None and city != "全部"
+        # 3. 檢查價格 (排除 None 和 "全部")
+        has_price = price_level is not None and price_level != "全部"
+        # 4. 檢查標籤 (排除 None、空列表、以及列表裡只有空字串的情況)
+        has_tags = tags is not None and any(t.strip() for t in tags)
+        # 如果「沒有」任何有效條件，直接回傳空列表 []
+        if not any([has_q, has_city, has_price, has_tags]):
+            print(" 未輸入搜尋條件，直接回傳空集合")
+            return []
         
         # 1. 基礎 SQL
         sql = "SELECT * FROM restaurants WHERE 1=1"
@@ -42,7 +54,7 @@ class RestaurantSystem:
             sql += " AND PriceLevel = %s"
             params.append(price_level)
             
-        # 5. 標籤過濾 (DB 中 TagsStr 是字串 "Tag1,Tag2"，使用 LIKE 搜尋)
+        # 5. 標籤過濾 
         # 邏輯：只要符合其中一個標籤即可 (OR 邏輯)
         if tags:
             tag_conditions = []
@@ -70,40 +82,36 @@ class RestaurantSystem:
         """[DB] 寫入預約資料到 MySQL"""
         sql = """
             INSERT INTO reservations 
-            (restaurant_name, user_name, phone, email, party_size, booking_time, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            (restaurant_name, user_id, user_name, phone, party_size, booking_time, booking_status, note)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
         params = (
             booking_data.get("restaurant_name"),
-            booking_data.get("user_name"),
+            booking_data.get("user_id"),
+            booking_data.get("user_name"),    # 對應 user_name
             booking_data.get("phone"),
-            booking_data.get("email"),
             booking_data.get("party_size"),
             booking_data.get("booking_time"),
-            booking_data.get("status", "confirmed")
+            booking_data.get("status_value", "confirmed"),                     
+            booking_data.get("note")          
         )
         
         # commit=True 代表要真的寫入資料庫
         with get_db_cursor(commit=True) as cursor:
             cursor.execute(sql, params)
         
-    #用來刪除資料的
-    def get_all_reservations(self):
-        """[DB] 取得所有預約資料 (依時間新到舊排序)"""
-        # ORDER BY created_at DESC 讓最新的預約排在最上面，方便你找剛測試的資料
-        sql = "SELECT * FROM reservations ORDER BY created_at DESC"
-        with get_db_cursor() as cursor:
-            cursor.execute(sql)
-            return cursor.fetchall()
-
-    def delete_reservation(self, reservation_id: int):
-        """[DB] 根據 ID 刪除預約"""
-        sql = "DELETE FROM reservations WHERE id = %s"
+    #用來軟刪除資料的
+    def cancel_reservation(self, reservation_id: int):
+        """
+        [DB] 取消預約 (軟刪除)
+        更新為 'cancelled'，保留歷史紀錄以便查詢
+        """
+        sql = "UPDATE reservations SET booking_status = 'cancelled' WHERE booking_id = %s"
         
-        # commit=True 代表要真的執行刪除動作
+        # commit=True 代表要真的執行修改動作
         with get_db_cursor(commit=True) as cursor:
             cursor.execute(sql, (reservation_id,))
-            # rowcount 代表「影響了幾筆資料」，如果 > 0 代表有刪到東西
+            # rowcount > 0 代表有找到 ID 並更新成功
             return cursor.rowcount > 0
 # --- 實例化管理系統 ---
 sys = RestaurantSystem()
@@ -155,21 +163,17 @@ def make_reservation(booking: ReservationRequest):
     except Exception as e:
         print(f"Error occurred during reservation: {e}")
         raise HTTPException(status_code=500, detail=f"預約失敗: {str(e)}")
-    
-# 5. [查看所有預約 API] (管理員用)
-@router.get("/api/reservations")
-def get_reservations():
-    """列出所有預約，方便查看 ID 來刪除"""
-    return sys.get_all_reservations()
 
-# 6. [刪除預約 API]
+# 5. [軟件刪除預約 API]
 @router.delete("/api/reservation/{reservation_id}")
-def delete_reservation(reservation_id: int):
-    """輸入預約 ID 來刪除該筆資料"""
-    success = sys.delete_reservation(reservation_id)
+def cancel_reservation(reservation_id: int):
+    """
+    輸入預約 ID 來取消該筆資料 (狀態改為 cancelled)。
+    """
+    success = sys.cancel_reservation(reservation_id)
     
     if success:
-        return {"status": "success", "message": f"預約 ID {reservation_id} 已刪除"}
+        return {"status": "success", "message": f"預約 ID {reservation_id} 已成功取消"}
     else:
         # 如果 ID 不存在
-        raise HTTPException(status_code=404, detail="刪除失敗，找不到此預約 ID")
+        raise HTTPException(status_code=404, detail="取消失敗，找不到此預約 ID")

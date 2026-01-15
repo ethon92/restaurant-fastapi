@@ -4,12 +4,13 @@ from sqlalchemy.types import NVARCHAR, Float, Integer, String
 import os
 from urllib.parse import quote_plus
 from dotenv import load_dotenv
+from typing import Dict, Any
 
 # 1. 載入環境變數
 load_dotenv()
 
 db_user = os.getenv("DB_USER")
-db_password = os.getenv("DB_PASSWORD")
+db_password = os.getenv("DB_PASSWORD","")
 db_host = os.getenv("DB_HOST")
 db_port = os.getenv("DB_PORT")
 db_name = os.getenv("DB_NAME")
@@ -107,7 +108,7 @@ try:
         con=engine,
         if_exists="replace",
         index=False,
-        dtype=dtype_mapping
+        dtype=dtype_mapping 
     )
     
     # 設定 Primary Key
