@@ -8,7 +8,7 @@ router = APIRouter()
 # 建立comment的table
 def create_comment_table(cursor):
     create_query = """
-    create table comment (
+    create table comments (
         comment_id int primary key auto_increment,
         user_id int not null,
         restaurant_id varchar(50) not null,             
@@ -17,13 +17,13 @@ def create_comment_table(cursor):
         comment_time DATETIME DEFAULT CURRENT_TIMESTAMP 
     );
     """
-    cursor.execute("show tables like %s", ("comment"))
+    cursor.execute("show tables like %s", ("comments"))
     result = cursor.fetchone()
     # 當沒有table時才建立
     if result is None:
         try:
             cursor.execute(create_query)
-            print("comment table is created!!")
+            print("comments table is created!!")
         except pymysql.Error as e:
             print(f"Error create comment table: {e}")
 
@@ -34,10 +34,9 @@ def get_comment(user_id:Annotated[int, Path(title="The ID of user", gt=0)]):
     try:
         with get_db_cursor() as cursor:
             sql = """
-                select comment_id, user_id, comment_content, Name, rating from comment 
-                join restaurants on restaurant_id = ID where user_id=%s
+                select comment_id, user_id, Name, comment_content, rating, comment_time from comments join restaurants on restaurant_id = ID where user_id=%s;
                 """
-            cursor.execute(sql,(user_id))
+            cursor.execute(sql, (user_id))
             results = cursor.fetchall()
         return {
             "status": "Success",

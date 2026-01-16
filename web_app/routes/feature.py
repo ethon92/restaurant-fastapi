@@ -140,18 +140,18 @@ def update_favorite(update: FavoriteRestaurant):
         raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
 
 # 新增評論餐廳路由
-@router.post("/comment")
-def add_comment(comment:RestaurantComment):
+@router.post("/comments")
+def add_comment(comments:RestaurantComment):
     try:
         with get_db_cursor(commit=True) as cursor:
             create_table(cursor)
-            cursor.execute("select * from comment where user_id=%s and restaurant_id=%s",(comment.user_id, comment.restaurant_id,))
+            cursor.execute("select * from comments where user_id=%s and restaurant_id=%s",(comments.user_id, comments.restaurant_id,))
             result = cursor.fetchone()
             if result is not None:
                 raise HTTPException(status_code=409, detail="已完成評論!!")
             
-            sql = "insert into comment(user_id,restaurant_id, comment_content,rating) values(%s,%s,%s,%s)"
-            cursor.execute(sql, (comment.user_id,comment.restaurant_id,comment.comment_content,comment.rating))
+            sql = "insert into comments(user_id,restaurant_id, comment_content,rating) values(%s,%s,%s,%s)"
+            cursor.execute(sql, (comments.user_id,comments.restaurant_id,comments.comment_content,comments.rating))
             return{
                 "status":"Success"
             }
@@ -161,15 +161,15 @@ def add_comment(comment:RestaurantComment):
         raise HTTPException(status_code=500, detail=f"資料庫錯誤:{e}") 
 
 # 刪除評論餐廳路由
-@router.delete("/comment/{user_id}/{restaurant_id}")
+@router.delete("/comments/{user_id}/{restaurant_id}")
 def delete_comment(user_id: Annotated[int, Path(tittle="The ID of user",gt=0)],restaurant_id: str):
     try:
         with get_db_cursor(commit=True) as cursor:
-            cursor.execute("select * from comment where user_id=%s and restaurant_id=%s",(user_id,restaurant_id))
+            cursor.execute("select * from comments where user_id=%s and restaurant_id=%s",(user_id,restaurant_id))
             result = cursor.fetchone()
             if not result:
                 raise HTTPException(status_code=404, detail="沒有此筆資料!!")
-            delete_sql="delete from comment where user_id=%s and restaurant_id=%s"
+            delete_sql="delete from comments where user_id=%s and restaurant_id=%s"
             cursor.execute(delete_sql, (user_id, restaurant_id))
             return{
                 "status":"Success"
@@ -179,15 +179,15 @@ def delete_comment(user_id: Annotated[int, Path(tittle="The ID of user",gt=0)],r
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"資料庫錯誤:{e}")
 # 更新評論餐廳路由
-@router.put("/comment")
+@router.put("/comments")
 def update_comment(update:RestaurantComment):
     try:
         with get_db_cursor(commit=True) as cursor:
-            cursor.execute("select * from comment where user_id=%s and restaurant_id=%s", (update.user_id, update.restaurant_id))
+            cursor.execute("select * from comments where user_id=%s and restaurant_id=%s", (update.user_id, update.restaurant_id))
             result = cursor.fetchone()
             if not result:
                 raise HTTPException(status_code=404, detail="沒有此筆資料!!")
-            update_sql="update comment set comment_content=%s where user_id=%s and restaurant_id=%s"
+            update_sql="update comments set comment_content=%s where user_id=%s and restaurant_id=%s"
             cursor.execute(update_sql, (update.comment_content, update.user_id, update.restaurant_id))
             return {
                 "status":"Success",
