@@ -28,20 +28,20 @@ def create_comment_table(cursor):
             print(f"Error create comment table: {e}")
 
 # 查詢評論餐廳路由(根據 restaurant ID)
-@router.get("/comment/{restaurant_id}")
+@router.get("/RestaurantComment/{restaurant_id}")
 
-def get_comment(restaurant_id:Annotated[str, Path(title="The ID of restaurant", gt=0)]):
+def get_restaurant_comment(restaurant_id:str):
     try:
         with get_db_cursor() as cursor:
             sql = """
-                select comment_id, user_id, comment_content, Name, rating from comment 
+                select comment_id, comment_content, Name, rating from comment 
                 join restaurants on restaurant_id = ID where restaurant_id=%s
                 """
             cursor.execute(sql,(restaurant_id))
             results = cursor.fetchall()
         return {
             "status": "Success",
-            "user_id": restaurant_id,
+            "restaurant_id": restaurant_id,
             "results": results
         }
     except Exception as e:
