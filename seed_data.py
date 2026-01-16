@@ -4,12 +4,9 @@ import sys
 from urllib.parse import quote_plus
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
-# 關鍵修正：明確引入型別，消除 VS Code 紅線
 from sqlalchemy.types import NVARCHAR, Float, Integer, String
 
-# ==========================================
 # 1. 環境變數與路徑設定
-# ==========================================
 load_dotenv()
 
 # 取得目前檔案所在的資料夾路徑，確保讀取 CSV 不會找不到
@@ -31,9 +28,7 @@ if not all([db_user, db_host, db_port, db_name]):
 # 處理密碼特殊字元 (如 @, #)
 encoded_password = quote_plus(db_password)
 
-# ==========================================
 # 2. 自動建立資料庫 (如果不存在)
-# ==========================================
 print(f"🔨 正在檢查資料庫 `{db_name}`...")
 
 try:
@@ -48,9 +43,7 @@ except Exception as e:
     print(f"❌ 無法建立資料庫，請確認帳號權限或連線設定。\n錯誤: {e}")
     sys.exit(1)
 
-# ==========================================
 # 3. 建立目標資料庫連線
-# ==========================================
 try:
     # 指定連線到 db_name，並強制使用 utf8mb4
     connection_str = f"mysql+pymysql://{db_user}:{encoded_password}@{db_host}:{db_port}/{db_name}?charset=utf8mb4"
@@ -60,9 +53,8 @@ except Exception as e:
     print(f"❌ 連線失敗: {e}")
     sys.exit(1)
 
-# ==========================================
+
 # 4. 讀取 CSV 與資料清洗 (關鍵步驟！)
-# ==========================================
 if not os.path.exists(csv_filename):
     print(f"❌ 錯誤：找不到 CSV 檔案：{csv_filename}")
     sys.exit(1)
@@ -102,9 +94,7 @@ for col in text_columns:
 
 print(f"📊 準備匯入 {len(df)} 筆清洗後的資料...")
 
-# ==========================================
 # 5. 定義型別與寫入資料庫
-# ==========================================
 
 # 定義 SQLAlchemy 型別 (這樣寫 VS Code 就不會報紅線)
 dtype_mapping = {
