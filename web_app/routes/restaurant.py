@@ -49,14 +49,6 @@ def get_restaurant_comment(restaurant_id:str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"資料庫錯誤:{e}")
 
-# --- 路徑設定 ---
-current_file_path = os.path.abspath(__file__)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(current_file_path)))
-DATA_DIR = os.path.join(BASE_DIR, "output_json")
-MAIN_JSON_PATH = os.path.join(DATA_DIR, "restaurants_main.json")
-GALLERY_JSON_PATH = os.path.join(DATA_DIR, "restaurants_gallery.json")
-RESERVATIONS_FILE = os.path.join(DATA_DIR, "reservations.json")
-
 class RestaurantSystem:
     def get_list(self, skip: int = 0, limit: int = 20):
         """[DB] 取得分頁清單"""
