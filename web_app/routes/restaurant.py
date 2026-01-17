@@ -50,8 +50,6 @@ def get_restaurant_comment(restaurant_id:str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"資料庫錯誤:{e}")
 
-router = APIRouter()
-
 # --- 路徑設定 ---
 current_file_path = os.path.abspath(__file__)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(current_file_path)))
