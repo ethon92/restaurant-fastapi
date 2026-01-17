@@ -3,10 +3,9 @@ from web_app.mysql_connection import get_db_cursor
 import pymysql
 from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
-import json
-import os
-from threading import Lock
 from web_app.models.schema import ReservationRequest
+# 引入您的資料庫連線模組
+from web_app.mysql_connection import get_db_cursor
 
 router = APIRouter()
 
@@ -59,98 +58,123 @@ GALLERY_JSON_PATH = os.path.join(DATA_DIR, "restaurants_gallery.json")
 RESERVATIONS_FILE = os.path.join(DATA_DIR, "reservations.json")
 
 class RestaurantSystem:
-    def __init__(self):
-        self.restaurants_db = []
-        self.gallery_db = []
-        self.id_to_restaurant = {}   
-        self.name_to_restaurant = {} 
-        self.lock = Lock()           
-        self.load_data()
-
-    def load_data(self):
-        """初始化時載入所有 JSON 資料"""
-        if os.path.exists(MAIN_JSON_PATH):
-            with open(MAIN_JSON_PATH, "r", encoding="utf-8") as f:
-                self.restaurants_db = json.load(f)
-            # 建立索引：加快詳情頁查詢速度
-            self.name_to_restaurant = {r["Name"]: r for r in self.restaurants_db}
-            self.id_to_restaurant = {r.get("ID", ""): r for r in self.restaurants_db}
-            print(f"✅ [System] 已載入 {len(self.restaurants_db)} 筆餐廳資料")
-        
-        if os.path.exists(GALLERY_JSON_PATH):
-            with open(GALLERY_JSON_PATH, "r", encoding="utf-8") as f:
-                self.gallery_db = json.load(f)
-            print(f"✅ [System] 已載入相簿資料")
-    # 取得分頁清單 python slicing
     def get_list(self, skip: int = 0, limit: int = 20):
-        """取得分頁清單"""
-        return self.restaurants_db[skip : skip + limit]
+        """[DB] 取得分頁清單"""
+        sql = "SELECT * FROM restaurants LIMIT %s OFFSET %s"
+        with get_db_cursor() as cursor:
+            cursor.execute(sql, (limit, skip))
+            result = cursor.fetchall()
+            return result
 
     def search(self, 
-               q: Optional[str] = None, 
-               tags: Optional[List[str]] = None, 
-               city: Optional[str] = None, 
-               price_level: Optional[str] = None):
-        results = self.restaurants_db
+            q: Optional[str] = None, 
+            tags: Optional[List[str]] = None, 
+            city: Optional[str] = None, 
+            price_level: Optional[str] = None):
+        """[DB] 搜尋功能 (動態 SQL 拼裝)"""
+        # 1. 檢查關鍵字 (排除 None 和 空字串)
+        has_q = q is not None and q.strip() != ""
+        # 2. 檢查地點 (排除 None 和 "全部")
+        has_city = city is not None and city != "全部"
+        # 3. 檢查價格 (排除 None 和 "全部")
+        has_price = price_level is not None and price_level != "全部"
+        # 4. 檢查標籤 (排除 None、空列表、以及列表裡只有空字串的情況)
+        has_tags = tags is not None and any(t.strip() for t in tags)
+        # 如果「沒有」任何有效條件，直接回傳空列表 []
+        if not any([has_q, has_city, has_price, has_tags]):
+            print(" 未輸入搜尋條件，直接回傳空集合")
+            return []
         
-        # 1. 關鍵字過濾 (名稱、描述、地址)
+        # 1. 基礎 SQL
+        sql = "SELECT * FROM restaurants WHERE 1=1"
+        params = []
+
+        # 2. 關鍵字過濾 (名稱、描述、地址)
         if q:
-            keyword = q.strip().lower()
-            results = [
-                r for r in results 
-                if keyword in (str(r.get("Name", "")) + str(r.get("Description", "")) + str(r.get("Add", ""))).lower()
-            ]
+            sql += " AND (Name LIKE %s OR Description LIKE %s OR `Add` LIKE %s)"
+            keyword = f"%{q.strip()}%"
+            params.extend([keyword, keyword, keyword])
         
-        # 2. 縣市過濾
+        # 3. 縣市過濾
         if city and city != "全部":
-            results = [r for r in results if r.get("City") == city]
+            sql += " AND City = %s"
+            params.append(city)
             
-        # 3. 價格等級過濾 (例如: "$", "$$", "$$$")
+        # 4. 價格等級過濾
         if price_level and price_level != "全部":
-            results = [r for r in results if r.get("PriceLevel") == price_level]
+            sql += " AND PriceLevel = %s"
+            params.append(price_level)
             
-        # 4. 標籤過濾 (支援多選，採交集並去空白)
+        # 5. 標籤過濾 
+        # 邏輯：只要符合其中一個標籤即可 (OR 邏輯)
         if tags:
-            search_tags = set(t.strip() for t in tags if t.strip())
-            filtered = []
-            for r in results:
-                # 把 multi tags 切開並去空轉為集合
-                db_tags_str = str(r.get("TagsStr", ""))
-                db_tags_set = set(t.strip() for t in db_tags_str.split(",") if t.strip())
-                
-                # 只要搜尋標籤與資料標籤有重疊就納入
-                if search_tags & db_tags_set:
-                    filtered.append(r)
-            results = filtered
-                
-        return results
+            tag_conditions = []
+            for t in tags:
+                if t.strip():
+                    tag_conditions.append("TagsStr LIKE %s")
+                    params.append(f"%{t.strip()}%")
+            
+            if tag_conditions:
+                sql += " AND (" + " OR ".join(tag_conditions) + ")"
+
+        # 執行查詢
+        with get_db_cursor() as cursor:
+            cursor.execute(sql, tuple(params))
+            return cursor.fetchall()
+
+    def get_detail_by_name(self, name: str):
+        """[DB] 取得單一餐廳詳情"""
+        sql = "SELECT * FROM restaurants WHERE Name = %s"
+        with get_db_cursor() as cursor:
+            cursor.execute(sql, (name,))
+            return cursor.fetchone()
 
     def save_reservation(self, booking_data: dict):
-        """執行預約並存檔，加入 Lock 機制確保安全"""
-        with self.lock:
-            current_bookings = []
-            if os.path.exists(RESERVATIONS_FILE):
-                try:
-                    with open(RESERVATIONS_FILE, "r", encoding="utf-8") as f:
-                        current_bookings = json.load(f)
-                except:
-                    pass
-            
-            current_bookings.append(booking_data)
-            with open(RESERVATIONS_FILE, "w", encoding="utf-8") as f:
-                json.dump(current_bookings, f, ensure_ascii=False, indent=2)
-
-# --- 實例化管理系統 (啟動引擎) ---
+        """[DB] 寫入預約資料到 MySQL"""
+        sql = """
+            INSERT INTO reservations 
+            (restaurant_name, user_id, user_name, phone, party_size, booking_time, booking_status, note)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        params = (
+            booking_data.get("restaurant_name"),
+            booking_data.get("user_id"),
+            booking_data.get("user_name"),    # 對應 user_name
+            booking_data.get("phone"),
+            booking_data.get("party_size"),
+            booking_data.get("booking_time"),
+            booking_data.get("status_value", "confirmed"),                     
+            booking_data.get("note")          
+        )
+        
+        # commit=True 代表要真的寫入資料庫
+        with get_db_cursor(commit=True) as cursor:
+            cursor.execute(sql, params)
+        
+    #用來軟刪除資料的
+    def cancel_reservation(self, reservation_id: int):
+        """
+        [DB] 取消預約 (軟刪除)
+        更新為 'cancelled'，保留歷史紀錄以便查詢
+        """
+        sql = "UPDATE reservations SET booking_status = 'cancelled' WHERE booking_id = %s"
+        
+        # commit=True 代表要真的執行修改動作
+        with get_db_cursor(commit=True) as cursor:
+            cursor.execute(sql, (reservation_id,))
+            # rowcount > 0 代表有找到 ID 並更新成功
+            return cursor.rowcount > 0
+# --- 實例化管理系統 ---
 sys = RestaurantSystem()
 
-# --- API 路由區 (外部定義) ---
+# --- API 路由區 ---
 
-# 3. [全部餐廳列表]
+# 1. [全部餐廳列表]
 @router.get("/api/restaurants")  
 async def get_all_restaurants(skip: int = 0, limit: int = 20):
     return sys.get_list(skip, limit)
 
-# 4. [連動搜尋 API]
+# 2. [連動搜尋 API]
 @router.get("/api/search")      
 def search_restaurants(
     q: Optional[str] = None, 
@@ -158,31 +182,49 @@ def search_restaurants(
     city: Optional[str] = None, 
     price_level: Optional[str] = None
 ):
-    # 呼叫類別實例 sys 的 search 方法
     return sys.search(q=q, tags=tags, city=city, price_level=price_level)
 
-# 5. [詳情 API]
+# 3. [詳情 API]
 @router.get("/api/restaurant/{name}")  
 def get_restaurant_detail(name: str):
-    info = sys.name_to_restaurant.get(name)
+    info = sys.get_detail_by_name(name)
+    
     if not info:
         raise HTTPException(status_code=404, detail="找不到此餐廳")
     
-    gallery_data = next((g for g in sys.gallery_db if g["restaurant_id"] == name), None)
-    
+    # 注意：因為目前資料庫只有 restaurants 表，沒有 gallery 表
+    # 所以這裡暫時回傳空的 gallery，或是把封面圖當作第一張圖
+    gallery_images = []
+    if info.get('CoverImage'):
+        gallery_images.append(info['CoverImage'])
+
     return {
         "info": info,
-        "gallery": gallery_data["GalleryImages"] if gallery_data else []
+        "gallery": gallery_images 
     }
 
-# 6. [預約 API]
+# 4. [預約 API]
 @router.post("/api/book")  
 def make_reservation(booking: ReservationRequest):
     new_data = booking.dict()
-    new_data["status"] = "confirmed"
     
     try:
         sys.save_reservation(new_data)
         return {"status": "success", "message": f"預約成功！{booking.user_name} 先生/小姐"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail="預約失敗，請稍後再試")
+        print(f"Error occurred during reservation: {e}")
+        raise HTTPException(status_code=500, detail=f"預約失敗: {str(e)}")
+
+# 5. [軟件刪除預約 API]
+@router.delete("/api/reservation/{reservation_id}")
+def cancel_reservation(reservation_id: int):
+    """
+    輸入預約 ID 來取消該筆資料 (狀態改為 cancelled)。
+    """
+    success = sys.cancel_reservation(reservation_id)
+    
+    if success:
+        return {"status": "success", "message": f"預約 ID {reservation_id} 已成功取消"}
+    else:
+        # 如果 ID 不存在
+        raise HTTPException(status_code=404, detail="取消失敗，找不到此預約 ID")
