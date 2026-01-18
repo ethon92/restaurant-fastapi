@@ -19,7 +19,7 @@ class setup_database:
                 cursor.execute(self.sql)
                 print(f"{self.name} table is created!!")
             except pymysql.Error as e:
-                print(f"Error create favorite table: {e}")
+                print(f"Error create {self.name} table: {e}")
         else:
             print(f"{self.name} table exits!!")
 
