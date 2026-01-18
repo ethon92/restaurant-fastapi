@@ -11,3 +11,6 @@ wheels/
 
 # environment setting
 .env
+
+#作業系統
+.DS_Store
