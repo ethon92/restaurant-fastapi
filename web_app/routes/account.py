@@ -28,7 +28,7 @@ def create_comment_table(cursor):
             print(f"Error create comment table: {e}")
 
 # 查詢評論餐廳路由(根據 User ID)
-@router.get("/comment/{user_id}")
+@router.get("/comments/{user_id}")
 
 def get_comment(user_id:Annotated[int, Path(title="The ID of user", gt=0)]):
     try:
