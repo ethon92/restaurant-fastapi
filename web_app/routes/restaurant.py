@@ -3,6 +3,7 @@ from typing import List, Optional
 from web_app.models.schema import ReservationRequest
 # 引入您的資料庫連線模組
 from web_app.mysql_connection import get_db_cursor
+import pymysql
 
 router = APIRouter()
 
@@ -88,30 +89,34 @@ class RestaurantSystem:
         params = (
             booking_data.get("restaurant_name"),
             booking_data.get("user_id"),
-            booking_data.get("user_name"),    # 對應 user_name
+            booking_data.get("user_name"), # 對應 user_name
             booking_data.get("phone"),
             booking_data.get("party_size"),
             booking_data.get("booking_time"),
-            booking_data.get("status_value", "confirmed"),                     
+            booking_data.get("booking_status", "confirmed"),                     
             booking_data.get("note")          
         )
+        try:
+            with get_db_cursor(commit=True) as cursor:
+                cursor.execute(sql, params)
+        except pymysql.err.IntegrityError as e:
+            if e.args[0] == 1062:
+                raise ValueError("DuplicateBooking")
+            if e.args[0] == 1452:
+                raise ValueError("InvalidUser")
+            raise e
         
-        # commit=True 代表要真的寫入資料庫
-        with get_db_cursor(commit=True) as cursor:
-            cursor.execute(sql, params)
-        
-    #用來軟刪除資料的
+    #用來刪除資料的
     def cancel_reservation(self, reservation_id: int):
         """
-        [DB] 取消預約 (軟刪除)
-        更新為 'cancelled'，保留歷史紀錄以便查詢
+        [DB] 真正的刪除 (Hard Delete)
+        直接從資料庫移除該筆預約紀錄
         """
-        sql = "UPDATE reservations SET booking_status = 'cancelled' WHERE booking_id = %s"
+        sql = "DELETE FROM reservations WHERE booking_id = %s"
         
         # commit=True 代表要真的執行修改動作
         with get_db_cursor(commit=True) as cursor:
             cursor.execute(sql, (reservation_id,))
-            # rowcount > 0 代表有找到 ID 並更新成功
             return cursor.rowcount > 0
 # --- 實例化管理系統 ---
 sys = RestaurantSystem()
@@ -160,20 +165,26 @@ def make_reservation(booking: ReservationRequest):
     try:
         sys.save_reservation(new_data)
         return {"status": "success", "message": f"預約成功！{booking.user_name} 先生/小姐"}
+    except ValueError as ve:
+        error_msg = str(ve)
+        if error_msg == "DuplicateBooking":
+            raise HTTPException(status_code=400, detail="您在該時段已有預約，請勿重複提交")
+        if error_msg == "InvalidUser":
+            raise HTTPException(status_code=400, detail="使用者帳號無效或已註銷")
     except Exception as e:
         print(f"Error occurred during reservation: {e}")
         raise HTTPException(status_code=500, detail=f"預約失敗: {str(e)}")
 
-# 5. [軟件刪除預約 API]
+# 5. [刪除預約 API]
 @router.delete("/api/reservation/{reservation_id}")
 def cancel_reservation(reservation_id: int):
     """
-    輸入預約 ID 來取消該筆資料 (狀態改為 cancelled)。
+    輸入預約 ID 來永久刪除該筆資料。
     """
     success = sys.cancel_reservation(reservation_id)
     
     if success:
-        return {"status": "success", "message": f"預約 ID {reservation_id} 已成功取消"}
+        return {"status": "success", "message": f"預約 ID {reservation_id} 已從系統中永久刪除"}
     else:
         # 如果 ID 不存在
         raise HTTPException(status_code=404, detail="取消失敗，找不到此預約 ID")
