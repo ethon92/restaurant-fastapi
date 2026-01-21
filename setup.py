@@ -38,7 +38,9 @@ create_favorite = """
             fav_id int primary key auto_increment,
             user_id int not null,
             restaurant_id varchar(50) not null,
-            fav_note varchar(300)
+            fav_note varchar(300),
+            foreign key (user_id) references users(user_id),
+            foreign key (restaurant_id) references restaurants(id)
         )
         """
 
