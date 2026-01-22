@@ -203,6 +203,12 @@ def make_reservation(booking: ReservationRequest):
     try:
         sys.save_reservation(new_data)
         return {"status": "success", "message": f"預約成功！{booking.user_name} 先生/小姐"}
+    except ValueError as ve:
+        error_msg = str(ve)
+        if error_msg == "DuplicateBooking":
+            raise HTTPException(status_code=400, detail="您在該時段已有預約，請勿重複提交")
+        if error_msg == "InvalidUser":
+            raise HTTPException(status_code=400, detail="使用者帳號無效或已註銷")
     except Exception as e:
         print(f"Error occurred during reservation: {e}")
         raise HTTPException(status_code=500, detail=f"預約失敗: {str(e)}")
