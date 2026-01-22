@@ -60,16 +60,22 @@ create_users = """
 create_reservations = """
         CREATE TABLE reservations (
             booking_id INT AUTO_INCREMENT PRIMARY KEY,
-            restaurant_name VARCHAR(100),
+            restaurant_name varchar(100),
             user_id int,
-            user_name VARCHAR(50),
-            phone VARCHAR(20),
-            party_size INT,
-            booking_time VARCHAR(50),
-            booking_status VARCHAR(50) DEFAULT 'confirmed',
+            user_name Varchar(50),
+            phone varchar(20),
+            party_size int,
+            note text,
+            booking_time datetime,
+            booking_status Varchar(30) DEFAULT 'confirmed',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            note text
-    );
+            ADD CONSTRAINT fk_reservations_user
+            FOREIGN KEY (user_id) REFERENCES users(user_id) 
+            ON DELETE RESTRICT,
+            ),
+            ADD CONSTRAINT unique_booking
+            UNIQUE (user_id, booking_time)
+        );
 """
 
 try:
