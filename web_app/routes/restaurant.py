@@ -72,11 +72,11 @@ class RestaurantSystem:
             cursor.execute(sql, tuple(params))
             return cursor.fetchall()
 
-    def get_detail_by_name(self, name: str):
+    def get_detail_by_id(self, restaurant_id: str):
         """[DB] 取得單一餐廳詳情"""
-        sql = "SELECT * FROM restaurants WHERE Name = %s"
+        sql = "SELECT * FROM restaurants WHERE ID = %s"
         with get_db_cursor() as cursor:
-            cursor.execute(sql, (name,))
+            cursor.execute(sql, (restaurant_id,))
             return cursor.fetchone()
 
     def save_reservation(self, booking_data: dict):
@@ -139,15 +139,12 @@ def search_restaurants(
     return sys.search(q=q, tags=tags, city=city, price_level=price_level)
 
 # 3. [詳情 API]
-@router.get("/api/restaurant/{name}")  
-def get_restaurant_detail(name: str):
-    info = sys.get_detail_by_name(name)
+@router.get("/api/restaurant/{id}")  
+def get_restaurant_detail(id: str):
+    info = sys.get_detail_by_id(id)
     
     if not info:
         raise HTTPException(status_code=404, detail="找不到此餐廳")
-    
-    # 注意：因為目前資料庫只有 restaurants 表，沒有 gallery 表
-    # 所以這裡暫時回傳空的 gallery，或是把封面圖當作第一張圖
     gallery_images = []
     if info.get('CoverImage'):
         gallery_images.append(info['CoverImage'])
