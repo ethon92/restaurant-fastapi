@@ -49,7 +49,7 @@ def get_booking_record(user_id: Annotated[int, Path(title="The ID of user", gt=0
     try:
         with get_db_cursor() as cursor:
             sql = """
-                select restaurant_name, created_at, booking_status 
+                select booking_id id, restaurant_name name, created_at time, booking_status status
                 from reservations where user_id = %s
             """
             cursor.execute(sql, (user_id))
