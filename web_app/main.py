@@ -1,7 +1,9 @@
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from web_app.routes.feature import router as favorite_router
+from web_app.routes.account import router as account_router
+from web_app.routes.restaurant import router as restaurant_router
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import os
 
 # 1. 引入 develop 分支的 Router (收藏功能)
@@ -34,6 +36,8 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # 註冊：收藏功能 (來自 Develop)
 app.include_router(favorite_router)
+app.include_router(account_router)
+app.include_router(restaurant_router)
 
 # 註冊：餐廳主功能 (來自你的 Refactor)
 # 這行指令會自動把 search_restaurants 和 make_reservation 的功能掛載進來
