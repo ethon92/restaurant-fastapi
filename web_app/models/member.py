@@ -26,3 +26,7 @@ class VerifyIdentityPayload(BaseModel):
 class ResetPasswordPayload(BaseModel):
     email: EmailStr
     password: str
+
+
+class ProfileQuery(BaseModel):
+    email: EmailStr
