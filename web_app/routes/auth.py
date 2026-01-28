@@ -1,33 +1,29 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from web_app.mysql_connection import get_db_cursor
+from web_app.utils.security import hash_password, verify_password
 from web_app.models.member import (
+    # Auth
     LoginPayload,
     RegisterPayload,
+    # Forgot password
     ForgotPasswordPayload,
     VerifyIdentityPayload,
     ResetPasswordPayload,
+    # Profile / Account
+    GetProfilePayload,
+    VerifyPasswordPayload,
+    UpdateProfilePayload,
 )
 import pymysql
-import hashlib
-import os
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# 密碼 hash（sha256 + SALT）
 
-PWD_SALT = os.getenv("PWD_SALT", "dev_salt_change_me")  # 之後記得換成環境變數
-
-
-def hash_password(raw: str) -> str:
-    return hashlib.sha256((raw + PWD_SALT).encode("utf-8")).hexdigest()
-
-
-def verify_password(raw: str, hashed: str) -> bool:
-    return hash_password(raw) == hashed
-
-
+# ============================================================
+# DB: Table bootstrap
+# ============================================================
 # 建立table函式
 def create_table(cursor):
     create_query = """
@@ -49,6 +45,11 @@ def create_table(cursor):
         print("users table checked / created successfully")
     except pymysql.Error as e:
         print(f"Error creating users table: {e}")
+
+
+# ============================================================
+# 1) Auth (註冊 / 登入 / 登出)
+# ============================================================
 
 
 @router.post("/register")
@@ -78,7 +79,7 @@ async def register(payload: RegisterPayload):
             (
                 payload.name,
                 payload.email,
-                hash_password(payload.password),
+                hashed_pwd,
                 payload.birthday,
                 0,
             ),
@@ -115,6 +116,17 @@ async def login(payload: LoginPayload):
             "role": "admin" if user["user_role"] else "user",
         },
     }
+
+
+@router.post("/logout")
+async def logout():
+    return {"message": "logout ok"}
+
+
+# ============================================================
+# 2) Forgot Password Flow (忘記密碼：生日驗證)
+#    「不需要目前密碼」
+# ============================================================
 
 
 @router.post("/forgot-password")
@@ -156,6 +168,10 @@ async def verify_identity(payload: VerifyIdentityPayload):
 
 @router.post("/reset-password")
 async def reset_password(payload: ResetPasswordPayload):
+    # 忘記密碼流程通常會搭配：
+    # - verify-identity 成功才允許 reset
+    # 這裡先做最小版：只要 email 存在就更新
+
     # 更新密碼（hash 後存）
     update_sql = """
         UPDATE users
@@ -174,13 +190,16 @@ async def reset_password(payload: ResetPasswordPayload):
     return {"message": "reset ok", "email": payload.email}
 
 
-# 對齊前端 auth.js：POST /auth/profile（帶 email）
-class ProfilePayload(BaseModel):
-    email: str
+# ============================================================
+# 3) Profile / Account (已登入操作)
+#    - 取得資料
+#    - 驗證目前密碼（re-auth）
+#    - 更新基本資料（需目前密碼）
+# ============================================================
 
 
 @router.post("/profile")
-async def profile(payload: ProfilePayload):
+async def profile(payload: GetProfilePayload):
     sql = """
         SELECT user_id, user_name, user_email, user_birthday, user_role
         FROM users
@@ -203,6 +222,68 @@ async def profile(payload: ProfilePayload):
     }
 
 
-@router.post("/logout")
-async def logout():
-    return {"message": "logout ok"}
+@router.post("/verify-password")
+async def verify_password_api(payload: VerifyPasswordPayload):
+    """
+    Re-authentication endpoint (for sensitive actions).
+    Profile 頁面，使用者要做「更改密碼」之前，
+    會先呼叫這支 API 讓使用者再輸入一次密碼確認，
+    通過後才允許真的去改密碼
+    """
+    sql = """
+        SELECT user_password
+        FROM users
+        WHERE user_email = %s
+        LIMIT 1
+    """
+    with get_db_cursor() as cursor:
+        cursor.execute(sql, (payload.email,))
+        user = cursor.fetchone()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 用 hash 驗證（跟 login 一樣）
+    if not verify_password(payload.current_password, user["user_password"]):
+        raise HTTPException(status_code=401, detail="Password incorrect")
+
+    return {"message": "password verified"}
+
+
+@router.put("/profile")
+async def update_profile(payload: UpdateProfilePayload):
+    # 1) 先查使用者（拿到 password hash）
+    select_sql = """
+        SELECT user_id, user_password
+        FROM users
+        WHERE user_email = %s
+        LIMIT 1
+    """
+
+    with get_db_cursor() as cursor:
+        cursor.execute(select_sql, (payload.email,))
+        user = cursor.fetchone()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 2) 驗證目前密碼（sha256+salt）
+    if not verify_password(payload.current_password, user["user_password"]):
+        raise HTTPException(status_code=401, detail="Password incorrect")
+
+    # 3) 密碼正確才更新
+    sql = """
+        UPDATE users
+        SET user_name = %s,
+            user_birthday = %s
+        WHERE user_email = %s
+        LIMIT 1
+    """
+
+    with get_db_cursor(commit=True) as cursor:
+        cursor.execute(sql, (payload.name, payload.birthday, payload.email))
+
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+
+    return {"message": "update ok"}

@@ -1,5 +1,18 @@
 from datetime import date
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional
+
+
+# =========================
+# Auth (登入 / 註冊)
+# =========================
+
+
+class RegisterPayload(BaseModel):
+    name: str = Field(..., min_length=1, max_length=20)
+    email: EmailStr
+    password: str = Field(..., min_length=1, max_length=255)
+    birthday: date
 
 
 class LoginPayload(BaseModel):
@@ -7,11 +20,11 @@ class LoginPayload(BaseModel):
     password: str
 
 
-class RegisterPayload(BaseModel):
-    name: str
-    email: EmailStr
-    password: str
-    birthday: date
+# =========================
+# Forgot Password Flow (忘記密碼)
+# - 不需要目前密碼
+# - 使用生日/身分資料驗證
+# =========================
 
 
 class ForgotPasswordPayload(BaseModel):
@@ -25,8 +38,26 @@ class VerifyIdentityPayload(BaseModel):
 
 class ResetPasswordPayload(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=1, max_length=255)
 
 
-class ProfileQuery(BaseModel):
+# =========================
+# Profile / Account (已登入敏感操作)
+# - 需要目前密碼 re-auth
+# =========================
+
+
+class GetProfilePayload(BaseModel):
     email: EmailStr
+
+
+class VerifyPasswordPayload(BaseModel):
+    email: EmailStr
+    current_password: str
+
+
+class UpdateProfilePayload(BaseModel):
+    email: EmailStr
+    name: str = Field(..., min_length=1, max_length=20)
+    birthday: Optional[date] = None
+    current_password: str
