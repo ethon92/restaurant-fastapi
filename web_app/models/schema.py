@@ -7,6 +7,7 @@ class ReservationRequest(BaseModel):
     user_name: str
     user_id: int            
     phone: str
+    email: str
     party_size: int
     booking_time: datetime
     note: Optional[str] = None
