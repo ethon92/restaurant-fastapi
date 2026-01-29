@@ -1,15 +1,39 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query, Path
 from web_app.mysql_connection import get_db_cursor
 import pymysql
-from fastapi import APIRouter, HTTPException, Query
-from typing import List, Optional
+from typing import List, Optional, Annotated
 from web_app.models.schema import ReservationRequest
-# 引入您的資料庫連線模組
-from web_app.mysql_connection import get_db_cursor
-import pymysql
 
 router = APIRouter()
 
+#建立reservation的table
+def create_reservations_table(cursor):
+    create_query = """
+    CREATE TABLE reservations (
+            booking_id INT AUTO_INCREMENT PRIMARY KEY,
+            restaurant_name varchar(100),
+            user_id int,
+            user_name Varchar(50),
+            phone varchar(20),
+            email varchar(100),
+            party_size int,
+            note text,
+            booking_time datetime,
+            booking_status Varchar(30) DEFAULT 'confirmed',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_reservations_user
+            FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT,
+            CONSTRAINT unique_booking UNIQUE (user_id, booking_time)
+        );
+    """
+    cursor.execute("show tables like %s", ("reservations", )) 
+    result = cursor.fetchone()
+    if result is None:
+        try:
+            cursor.execute(create_query)
+            print("reservations table created (Normalized Version)!!!")
+        except pymysql.Error as e:
+            print(f"Error create table: {e}")
 # 建立comment的table
 def create_comment_table(cursor):
     create_query = """
@@ -32,7 +56,7 @@ def create_comment_table(cursor):
         except pymysql.Error as e:
             print(f"Error create comment table: {e}")
 
-# 查詢評論餐廳路由(根據 restaurant ID)
+# 查詢評論餐廳路由
 @router.get("/RestaurantComment/{restaurant_id}")
 def get_restaurant_comment(restaurant_id:str):
     try:
@@ -40,7 +64,7 @@ def get_restaurant_comment(restaurant_id:str):
             sql = """
                 select comment_id, user_id, Name, comment_content, rating, comment_time from comments join restaurants on restaurant_id = ID where restaurant_id=%s
                 """
-            cursor.execute(sql,(restaurant_id))
+            cursor.execute(sql,(restaurant_id, ))
             results = cursor.fetchall()
         return {
             "status": "Success",
@@ -75,8 +99,8 @@ class RestaurantSystem:
         has_tags = tags is not None and any(t.strip() for t in tags)
         # 如果「沒有」任何有效條件，直接回傳空列表 []
         if not any([has_q, has_city, has_price, has_tags]):
-            print(" 未輸入搜尋條件，直接回傳空集合")
-            return []
+            print(" 未輸入搜尋條件，回傳預設前 20 筆")
+            return self.get_list(skip=0, limit=20)
         
         # 1. 基礎 SQL
         sql = "SELECT * FROM restaurants WHERE 1=1"
@@ -126,14 +150,15 @@ class RestaurantSystem:
         """[DB] 寫入預約資料到 MySQL"""
         sql = """
             INSERT INTO reservations 
-            (restaurant_name, user_id, user_name, phone, party_size, booking_time, booking_status, note)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            (restaurant_name, user_id, user_name, phone, email, party_size, booking_time, booking_status, note)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         params = (
             booking_data.get("restaurant_name"),
             booking_data.get("user_id"),
-            booking_data.get("user_name"), # 對應 user_name
+            booking_data.get("user_name"), 
             booking_data.get("phone"),
+            booking_data.get("email"),
             booking_data.get("party_size"),
             booking_data.get("booking_time"),
             booking_data.get("booking_status", "confirmed"),                     
@@ -142,6 +167,8 @@ class RestaurantSystem:
         try:
             with get_db_cursor(commit=True) as cursor:
                 cursor.execute(sql, params)
+                new_id = cursor.lastrowid
+                return new_id
         except pymysql.err.IntegrityError as e:
             if e.args[0] == 1062:
                 raise ValueError("DuplicateBooking")
@@ -156,11 +183,11 @@ class RestaurantSystem:
         直接從資料庫移除該筆預約紀錄
         """
         sql = "DELETE FROM reservations WHERE booking_id = %s"
-        
-        # commit=True 代表要真的執行修改動作
+
         with get_db_cursor(commit=True) as cursor:
             cursor.execute(sql, (reservation_id,))
             return cursor.rowcount > 0
+        
 # --- 實例化管理系統 ---
 sys = RestaurantSystem()
 
@@ -197,34 +224,91 @@ def get_restaurant_detail(id: str):
         "gallery": gallery_images 
     }
 
-# 4. [預約 API]
-@router.post("/api/book")  
-def make_reservation(booking: ReservationRequest):
-    new_data = booking.dict()
-    
+# 4. [新增預約 API]
+@router.post("/api/reservations")  
+def add_reservations(booking: ReservationRequest):
     try:
-        sys.save_reservation(new_data)
-        return {"status": "success", "message": f"預約成功！{booking.user_name} 先生/小姐"}
+        new_id = sys.save_reservation(booking.dict())
+        full_data = None 
+        
+        with get_db_cursor() as cursor:
+            sql = """
+                SELECT r.*, u.user_name as member_name
+                FROM reservations r 
+                JOIN users u ON r.user_id = u.user_id 
+                WHERE r.booking_id = %s
+            """
+            cursor.execute(sql, (new_id,))
+            full_data = cursor.fetchone()
+        if not full_data:
+            return {
+                "status": "success", 
+                "message": "預約成功！(系統忙碌中，請稍後至後台查看詳情)",
+                "data": {"booking_id": new_id} 
+            }
+        return {
+            "status": "success", 
+            "message": f"預約成功！歡迎 {full_data['member_name']} 會員",
+            "data": full_data  
+        }
     except ValueError as ve:
-        error_msg = str(ve)
-        if error_msg == "DuplicateBooking":
-            raise HTTPException(status_code=400, detail="您在該時段已有預約，請勿重複提交")
-        if error_msg == "InvalidUser":
-            raise HTTPException(status_code=400, detail="使用者帳號無效或已註銷")
+        if str(ve) == "DuplicateBooking":
+            raise HTTPException(status_code=409, detail="該時段您已有預約，請勿重複提交!!")
+        if str(ve) == "InvalidUser":
+            raise HTTPException(status_code=400, detail="無效的會員 ID，請先註冊!!")
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
-        print(f"Error occurred during reservation: {e}")
-        raise HTTPException(status_code=500, detail=f"預約失敗: {str(e)}")
+        print(f"Error: {e}")
+        raise HTTPException(status_code=500, detail=f"系統錯誤: {e}")
 
 # 5. [刪除預約 API]
-@router.delete("/api/reservation/{reservation_id}")
-def cancel_reservation(reservation_id: int):
-    """
-    輸入預約 ID 來永久刪除該筆資料。
-    """
-    success = sys.cancel_reservation(reservation_id)
+@router.delete("/api/reservations/{user_id}/{booking_id}")
+def delete_reservation(
+    user_id: Annotated[int, Path(title="The ID of user", gt=0)], 
+    booking_id: int
+):
+    try:
+        with get_db_cursor(commit=True) as cursor:
+            check_sql = "SELECT * FROM reservations WHERE user_id=%s AND booking_id=%s"
+            cursor.execute(check_sql, (user_id, booking_id))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="找不到此筆預約資料!!")
+
+            delete_sql = "DELETE FROM reservations WHERE user_id=%s AND booking_id=%s"
+            cursor.execute(delete_sql, (user_id, booking_id))
+            return {"status": "Success", "message": "預約已成功取消"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"資料庫錯誤：{e}")
     
-    if success:
-        return {"status": "success", "message": f"預約 ID {reservation_id} 已從系統中永久刪除"}
-    else:
-        # 如果 ID 不存在
-        raise HTTPException(status_code=404, detail="取消失敗，找不到此預約 ID")
+#6.  商家後台專用：查詢所有訂單 (b2b)
+# @router.get("/api/admin/reservations")
+# def get_admin_reservations(
+    # 這裡加入 params，設為必填 (因為老闆一定屬於某家店)
+#     restaurant_name: str = Query(..., description="請輸入餐廳名稱") 
+# ):
+#     try:
+#         with get_db_cursor() as cursor:
+#             sql = """
+#                 SELECT 
+#                     r.booking_id,
+#                     r.booking_time,
+#                     r.party_size,
+#                     r.note,
+#                     r.booking_status,
+#                     u.user_name,    
+#                     u.user_phone    
+#                 FROM reservations r
+#                 JOIN users u ON r.user_id = u.user_id
+#                 WHERE r.restaurant_name = %s  
+#                 ORDER BY r.booking_time DESC
+#             """
+#             cursor.execute(sql, (restaurant_name,))
+            
+#             results = cursor.fetchall()
+#             return {"status": "Success", "results": results}
+            
+#     except Exception as e:
+#         print(f"Admin Error: {e}")
+#         raise HTTPException(status_code=500, detail="資料庫查詢失敗")
