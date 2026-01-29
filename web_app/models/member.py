@@ -48,16 +48,20 @@ class ResetPasswordPayload(BaseModel):
 
 
 class GetProfilePayload(BaseModel):
-    email: EmailStr
+    user_id: int
 
 
 class VerifyPasswordPayload(BaseModel):
-    email: EmailStr
+    user_id: int
     current_password: str
 
 
 class UpdateProfilePayload(BaseModel):
-    email: EmailStr
+    user_id: int
     name: str = Field(..., min_length=1, max_length=20)
     birthday: Optional[date] = None
     current_password: str
+
+
+class ProfilePayload(BaseModel):
+    user_id: int

@@ -14,6 +14,7 @@ from web_app.models.member import (
     GetProfilePayload,
     VerifyPasswordPayload,
     UpdateProfilePayload,
+    ProfilePayload,
 )
 import pymysql
 
@@ -203,11 +204,11 @@ async def profile(payload: GetProfilePayload):
     sql = """
         SELECT user_id, user_name, user_email, user_birthday, user_role
         FROM users
-        WHERE user_email = %s
+        WHERE user_id = %s
         LIMIT 1
     """
     with get_db_cursor() as cursor:
-        cursor.execute(sql, (payload.email,))
+        cursor.execute(sql, (payload.user_id,))
         user = cursor.fetchone()
 
     if not user:
@@ -217,7 +218,7 @@ async def profile(payload: GetProfilePayload):
         "id": user["user_id"],
         "name": user["user_name"],
         "email": user["user_email"],
-        "birthday": str(user["user_birthday"]),
+        "birthday": str(user["user_birthday"]) if user["user_birthday"] else "",
         "role": "admin" if user["user_role"] else "user",
     }
 
@@ -233,11 +234,11 @@ async def verify_password_api(payload: VerifyPasswordPayload):
     sql = """
         SELECT user_password
         FROM users
-        WHERE user_email = %s
+        WHERE user_id = %s
         LIMIT 1
     """
     with get_db_cursor() as cursor:
-        cursor.execute(sql, (payload.email,))
+        cursor.execute(sql, (payload.user_id,))
         user = cursor.fetchone()
 
     if not user:
@@ -256,12 +257,12 @@ async def update_profile(payload: UpdateProfilePayload):
     select_sql = """
         SELECT user_id, user_password
         FROM users
-        WHERE user_email = %s
+        WHERE user_id = %s
         LIMIT 1
     """
 
     with get_db_cursor() as cursor:
-        cursor.execute(select_sql, (payload.email,))
+        cursor.execute(select_sql, (payload.user_id,))
         user = cursor.fetchone()
 
     if not user:
@@ -276,12 +277,12 @@ async def update_profile(payload: UpdateProfilePayload):
         UPDATE users
         SET user_name = %s,
             user_birthday = %s
-        WHERE user_email = %s
+        WHERE user_id = %s
         LIMIT 1
     """
 
     with get_db_cursor(commit=True) as cursor:
-        cursor.execute(sql, (payload.name, payload.birthday, payload.email))
+        cursor.execute(sql, (payload.name, payload.birthday, payload.user_id))
 
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="User not found")
