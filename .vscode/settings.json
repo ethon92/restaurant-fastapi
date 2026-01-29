@@ -2,5 +2,11 @@
     "cSpell.words": [
         "cursorclass",
         "dotenv"
-    ]
+    ],
+    "workbench.colorCustomizations": {
+        "activityBar.background": "#0E3418",
+        "titleBar.activeBackground": "#134922",
+        "titleBar.activeForeground": "#F5FCF7"
+    },
+    "python-envs.pythonProjects": []
 }
