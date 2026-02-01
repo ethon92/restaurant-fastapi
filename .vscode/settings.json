@@ -1,7 +1,8 @@
 {
     "cSpell.words": [
         "cursorclass",
-        "dotenv"
+        "dotenv",
+        "lastrowid"
     ],
     "workbench.colorCustomizations": {
         "activityBar.background": "#0E3418",
@@ -9,4 +10,5 @@
         "titleBar.activeForeground": "#F5FCF7"
     },
     "python-envs.pythonProjects": []
+
 }
