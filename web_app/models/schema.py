@@ -19,6 +19,7 @@ class RestaurantSchema(BaseModel):
     ID: str
     Name: str
     Add: Optional[str] = None
+    PriceLevel: Optional[str] = None
     Tel: Optional[str] = None
     Px: Optional[float] = None  
     Py: Optional[float] = None 
