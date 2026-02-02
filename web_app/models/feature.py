@@ -4,7 +4,11 @@ class FavoriteRestaurant(BaseModel):
     user_id: int
     restaurant_id: str
     fav_note: str | None
-    
+
+class UpdateFavorite(BaseModel):
+    fav_id: int
+    fav_note: str | None
+
 class RestaurantComment(BaseModel):
     user_id: int
     restaurant_id: str

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Path, HTTPException
 from web_app.models.feature import FavoriteRestaurant
 from web_app.models.feature import RestaurantComment
+from web_app.models.feature import UpdateFavorite
 from web_app.mysql_connection import get_db_cursor
 import pymysql
 from typing import Annotated
@@ -130,23 +131,23 @@ def delete_favorite(
 
 # 更新收藏餐廳路由
 @router.put("/favorite")
-def update_favorite(update: FavoriteRestaurant):
+def update_favorite(update: UpdateFavorite):
     try:
         with get_db_cursor(commit=True) as cursor:
             # 檢查此筆資料是否存在
             cursor.execute(
-                "select * from favorite where user_id=%s and restaurant_id=%s",
-                (update.user_id, update.restaurant_id),
+                "select * from favorite where fav_id=%s",
+                (update.fav_id),
             )
             result = cursor.fetchone()
             # 若不存在丟出404錯誤
             if not result:
                 raise HTTPException(status_code=404, detail="沒有此筆資料!!")
             update_sql = (
-                "update favorite set fav_note=%s where user_id=%s and restaurant_id=%s"
+                "update favorite set fav_note=%s where fav_id=%s"
             )
             cursor.execute(
-                update_sql, (update.fav_note, update.user_id, update.restaurant_id)
+                update_sql, (update.fav_note, update.fav_id)
             )
             return {
                 "status": "Success",
