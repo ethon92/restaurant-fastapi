@@ -17,7 +17,7 @@ from web_app.models.member import (
     ProfilePayload,
 )
 import pymysql
-
+import re
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -202,7 +202,7 @@ async def reset_password(payload: ResetPasswordPayload):
 @router.post("/profile")
 async def profile(payload: GetProfilePayload):
     sql = """
-        SELECT user_id, user_name, user_email, user_birthday, user_role
+        SELECT user_id, user_name, user_email, user_birthday, user_role, user_phone
         FROM users
         WHERE user_id = %s
         LIMIT 1
@@ -220,6 +220,7 @@ async def profile(payload: GetProfilePayload):
         "email": user["user_email"],
         "birthday": str(user["user_birthday"]) if user["user_birthday"] else "",
         "role": "admin" if user["user_role"] else "user",
+        "phone": user["user_phone"] or "",  # ✅ 新增：回傳手機（空就回 ""
     }
 
 
@@ -282,7 +283,37 @@ async def update_profile(payload: UpdateProfilePayload):
     """
 
     with get_db_cursor(commit=True) as cursor:
-        cursor.execute(sql, (payload.name, payload.birthday, payload.user_id))
+        cursor.execute(select_sql, (payload.user_id,))
+        user = cursor.fetchone()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+    # 2) 驗證目前密碼
+    if not verify_password(payload.current_password, user["user_password"]):
+        raise HTTPException(status_code=401, detail="Password incorrect")
+
+    # 3) ✅ 手機格式驗證（phone 允許為空/None）
+    # - 允許 "" 當作清空 → 轉成 None
+    phone = payload.phone
+    if phone == "":
+        phone = None
+
+    if phone is not None and not re.match(r"^09[0-9]{8}$", phone):
+        raise HTTPException(status_code=400, detail="Phone format invalid")
+
+    # 4) 密碼正確才更新（含 phone）
+    sql = """
+        UPDATE users
+        SET user_name = %s,
+            user_birthday = %s,
+            user_phone = %s
+        WHERE user_id = %s
+        LIMIT 1
+    """
+
+    with get_db_cursor(commit=True) as cursor:
+        cursor.execute(sql, (payload.name, payload.birthday, phone, payload.user_id))
 
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="User not found")

@@ -58,10 +58,16 @@ class VerifyPasswordPayload(BaseModel):
 
 class UpdateProfilePayload(BaseModel):
     user_id: int
-    name: str = Field(..., min_length=1, max_length=20)
+    name: str
     birthday: Optional[date] = None
+    phone: Optional[str] = None
     current_password: str
 
 
 class ProfilePayload(BaseModel):
     user_id: int
+    name: str
+    email: str
+    birthday: str
+    role: str
+    phone: Optional[str] = None
