@@ -28,6 +28,24 @@ import hashlib
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# ============================================================
+# Password policy (共用密碼規則)
+# 規則：6~15 碼、至少 1 個英文、至少 1 個數字、僅限英數
+# ============================================================
+PASSWORD_RULE = re.compile(r"^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,15}$")
+
+
+def _validate_password_or_400(password: str):
+    """
+    統一密碼規則檢查
+    - 失敗就丟 400，讓前端顯示 detail
+    """
+    if not PASSWORD_RULE.match(password):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be 6-15 chars and include letters and numbers",
+        )
+
 
 # ============================================================
 # DB: Table bootstrap
@@ -78,6 +96,9 @@ async def register(payload: RegisterPayload):
 
     if exist:
         raise HTTPException(status_code=400, detail="Email already exists")
+
+    # ✅ 密碼規則檢查（英文+數字、6~15碼）
+    _validate_password_or_400(payload.password)
 
     # hash 密碼再存
     hashed_pwd = hash_password(payload.password)
@@ -311,14 +332,14 @@ async def verify_forgot_password_otp(payload: VerifyOtpPayload):
         _otp_store.pop(email, None)
         raise HTTPException(status_code=429, detail="Too many attempts")
 
+    # OTP 基本檢查
+    if not otp.isdigit() or len(otp) != 6:
+        raise HTTPException(status_code=400, detail="OTP format invalid")
+
     # 比對 hash
     if _hash_otp(email, otp) != record["otp_hash"]:
         record["attempts"] += 1
         raise HTTPException(status_code=401, detail="OTP invalid")
-
-    # OTP 基本檢查
-    if not otp.isdigit() or len(otp) != 6:
-        raise HTTPException(status_code=400, detail="OTP format invalid")
 
     # 驗證成功
     record["verified"] = True
@@ -351,7 +372,7 @@ async def reset_password_by_otp(payload: ResetByOtpPayload):
         _otp_store.pop(email, None)
         raise HTTPException(status_code=400, detail="OTP expired")
 
-    # ✅ 要求先 verify-otp 成功（你前端也是這樣設計）
+    # 要求先 verify-otp 成功（
     if not record.get("verified"):
         raise HTTPException(status_code=401, detail="OTP not verified")
 
@@ -359,9 +380,8 @@ async def reset_password_by_otp(payload: ResetByOtpPayload):
     if _hash_otp(email, otp) != record["otp_hash"]:
         raise HTTPException(status_code=401, detail="OTP invalid")
 
-    # 密碼簡單規則（你可以加強）
-    if len(new_password) < 6:
-        raise HTTPException(status_code=400, detail="Password too short")
+    # 密碼規則檢查（英文+數字、6~15碼）
+    _validate_password_or_400(new_password)
 
     hashed_pwd = hash_password(new_password)
 
