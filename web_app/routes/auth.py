@@ -10,6 +10,9 @@ from web_app.models.member import (
     ForgotPasswordPayload,
     VerifyIdentityPayload,
     ResetPasswordPayload,
+    SendOtpPayload,
+    VerifyOtpPayload,
+    ResetByOtpPayload,
     # Profile / Account
     GetProfilePayload,
     VerifyPasswordPayload,
@@ -18,6 +21,10 @@ from web_app.models.member import (
 )
 import pymysql
 import re
+import time
+import secrets
+import hashlib
+
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -32,6 +39,7 @@ def create_table(cursor):
         `user_id` INTEGER NOT NULL AUTO_INCREMENT,
         `user_name` VARCHAR(20),
         `user_email` VARCHAR(30) NOT NULL,
+        `user_phone` VARCHAR(10) NULL,
         `user_password` VARCHAR(255) NOT NULL,
         `user_birthday` DATE NOT NULL,
         `user_role` BOOLEAN DEFAULT 0,
@@ -124,6 +132,39 @@ async def logout():
     return {"message": "logout ok"}
 
 
+# ------------------------------------------------------------
+# OTP 暫存（開發用）
+# key = email
+# value = {
+#   "otp_hash": "...",
+#   "expires_at": 1234567890,
+#   "verified": False,
+#   "attempts": 0,
+#   "last_sent_at": 1234567890
+# }
+# ------------------------------------------------------------
+OTP_TTL_SECONDS = 5 * 60  # OTP 有效 5 分鐘
+OTP_RESEND_COOLDOWN = 60  # 60 秒內不可重寄（避免狂發）
+OTP_MAX_ATTEMPTS = 5  # 最多嘗試 5 次（防暴力猜）
+_otp_store = {}
+
+
+def _hash_otp(email: str, otp: str) -> str:
+    """
+    用 email + otp 做 hash，避免記憶體中存明碼 OTP
+    """
+    raw = f"{email.lower()}::{otp}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _generate_otp_6() -> str:
+    """
+    產生 6 位數 OTP（000000~999999）
+    secrets 比 random 更適合安全用途
+    """
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
 # ============================================================
 # 2) Forgot Password Flow (忘記密碼：生日驗證)
 #    「不需要目前密碼」
@@ -192,6 +233,157 @@ async def reset_password(payload: ResetPasswordPayload):
 
 
 # ============================================================
+# 2-B) Forgot Password Flow (Email OTP)
+#    - send-otp：寄出驗證碼（開發期用 print）
+#    - verify-otp：驗證碼核對
+#    - reset：驗證成功才允許更新密碼
+# ============================================================
+
+
+@router.post("/forgot-password/send-otp")
+async def send_forgot_password_otp(payload: SendOtpPayload):
+    """
+    Step 1：輸入 email → 若存在就產生 OTP，並「寄出」(開發期用 print)
+    """
+    email = payload.email.strip().lower()
+
+    if not email:
+        raise HTTPException(status_code=400, detail="Email required")
+
+    # 1) 檢查 email 是否存在
+    sql = "SELECT user_id FROM users WHERE user_email = %s LIMIT 1"
+    with get_db_cursor() as cursor:
+        cursor.execute(sql, (email,))
+        user = cursor.fetchone()
+
+    if not user:
+        # 實務上可改成回傳 ok（避免洩漏帳號是否存在）
+        # 但你目前開發期要明確提示，就先 404
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    now = int(time.time())
+    record = _otp_store.get(email)
+
+    # 2) 簡單限流：60 秒內不可重寄
+    if record and (now - record.get("last_sent_at", 0) < OTP_RESEND_COOLDOWN):
+        raise HTTPException(status_code=429, detail="Too many requests")
+
+    # 3) 產生 OTP + 存 hash（不存明碼）
+    otp = _generate_otp_6()
+    _otp_store[email] = {
+        "otp_hash": _hash_otp(email, otp),
+        "expires_at": now + OTP_TTL_SECONDS,
+        "verified": False,
+        "attempts": 0,
+        "last_sent_at": now,
+    }
+
+    # ✅ 開發期：直接印在後端 console（之後再換成 SMTP 寄信）
+    print(f"[DEV OTP] email={email} otp={otp} (valid {OTP_TTL_SECONDS}s)")
+
+    return {"message": "otp sent"}
+
+
+@router.post("/forgot-password/verify-otp")
+async def verify_forgot_password_otp(payload: VerifyOtpPayload):
+    """
+    Step 2：輸入 email + otp → 驗證成功後，把狀態記為 verified
+    """
+    email = payload.email.strip().lower()
+    otp = payload.otp.strip()
+
+    if not email or not otp:
+        raise HTTPException(status_code=400, detail="Email and otp required")
+
+    record = _otp_store.get(email)
+    now = int(time.time())
+
+    if not record:
+        raise HTTPException(status_code=400, detail="OTP not requested")
+
+    # 過期
+    if now > record["expires_at"]:
+        _otp_store.pop(email, None)
+        raise HTTPException(status_code=400, detail="OTP expired")
+
+    # 嘗試次數過多
+    if record["attempts"] >= OTP_MAX_ATTEMPTS:
+        _otp_store.pop(email, None)
+        raise HTTPException(status_code=429, detail="Too many attempts")
+
+    # 比對 hash
+    if _hash_otp(email, otp) != record["otp_hash"]:
+        record["attempts"] += 1
+        raise HTTPException(status_code=401, detail="OTP invalid")
+
+    # OTP 基本檢查
+    if not otp.isdigit() or len(otp) != 6:
+        raise HTTPException(status_code=400, detail="OTP format invalid")
+
+    # 驗證成功
+    record["verified"] = True
+    record["attempts"] = 0
+
+    return {"message": "otp verified"}
+
+
+@router.post("/forgot-password/reset")
+async def reset_password_by_otp(payload: ResetByOtpPayload):
+    """
+    Step 3：email + otp + new_password
+    - 必須 OTP 已驗證，且仍在有效期內
+    - 更新 users.user_password（hash 後存）
+    """
+    email = payload.email.strip().lower()
+    otp = payload.otp.strip()
+    new_password = payload.new_password
+
+    if not email or not otp or not new_password:
+        raise HTTPException(status_code=400, detail="Missing fields")
+
+    record = _otp_store.get(email)
+    now = int(time.time())
+
+    if not record:
+        raise HTTPException(status_code=400, detail="OTP not requested")
+
+    if now > record["expires_at"]:
+        _otp_store.pop(email, None)
+        raise HTTPException(status_code=400, detail="OTP expired")
+
+    # ✅ 要求先 verify-otp 成功（你前端也是這樣設計）
+    if not record.get("verified"):
+        raise HTTPException(status_code=401, detail="OTP not verified")
+
+    # 再保險：也驗一次 otp hash（避免 verified 被誤用）
+    if _hash_otp(email, otp) != record["otp_hash"]:
+        raise HTTPException(status_code=401, detail="OTP invalid")
+
+    # 密碼簡單規則（你可以加強）
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password too short")
+
+    hashed_pwd = hash_password(new_password)
+
+    update_sql = """
+        UPDATE users
+        SET user_password = %s
+        WHERE user_email = %s
+        LIMIT 1
+    """
+
+    with get_db_cursor(commit=True) as cursor:
+        cursor.execute(update_sql, (hashed_pwd, email))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Email not found")
+
+    # ✅ 用完就清掉 OTP（避免重放）
+    _otp_store.pop(email, None)
+
+    return {"message": "reset ok"}
+
+
+# ============================================================
 # 3) Profile / Account (已登入操作)
 #    - 取得資料
 #    - 驗證目前密碼（re-auth）
@@ -254,6 +446,14 @@ async def verify_password_api(payload: VerifyPasswordPayload):
 
 @router.put("/profile")
 async def update_profile(payload: UpdateProfilePayload):
+    """
+    更新會員基本資料（需輸入目前密碼）
+    可更新：
+      - user_name
+      - user_birthday
+      - user_phone（可空，送 "" 視為清空）
+    """
+
     # 1) 先查使用者（拿到 password hash）
     select_sql = """
         SELECT user_id, user_password
@@ -273,28 +473,7 @@ async def update_profile(payload: UpdateProfilePayload):
     if not verify_password(payload.current_password, user["user_password"]):
         raise HTTPException(status_code=401, detail="Password incorrect")
 
-    # 3) 密碼正確才更新
-    sql = """
-        UPDATE users
-        SET user_name = %s,
-            user_birthday = %s
-        WHERE user_id = %s
-        LIMIT 1
-    """
-
-    with get_db_cursor(commit=True) as cursor:
-        cursor.execute(select_sql, (payload.user_id,))
-        user = cursor.fetchone()
-
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-
-    # 2) 驗證目前密碼
-    if not verify_password(payload.current_password, user["user_password"]):
-        raise HTTPException(status_code=401, detail="Password incorrect")
-
-    # 3) ✅ 手機格式驗證（phone 允許為空/None）
-    # - 允許 "" 當作清空 → 轉成 None
+    # 3) phone 格式驗證（允許 None 或 ""）
     phone = payload.phone
     if phone == "":
         phone = None
@@ -302,8 +481,8 @@ async def update_profile(payload: UpdateProfilePayload):
     if phone is not None and not re.match(r"^09[0-9]{8}$", phone):
         raise HTTPException(status_code=400, detail="Phone format invalid")
 
-    # 4) 密碼正確才更新（含 phone）
-    sql = """
+    # 4) 密碼正確才更新
+    update_sql = """
         UPDATE users
         SET user_name = %s,
             user_birthday = %s,
@@ -313,7 +492,9 @@ async def update_profile(payload: UpdateProfilePayload):
     """
 
     with get_db_cursor(commit=True) as cursor:
-        cursor.execute(sql, (payload.name, payload.birthday, phone, payload.user_id))
+        cursor.execute(
+            update_sql, (payload.name, payload.birthday, phone, payload.user_id)
+        )
 
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="User not found")

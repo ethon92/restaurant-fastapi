@@ -41,6 +41,21 @@ class ResetPasswordPayload(BaseModel):
     password: str = Field(..., min_length=1, max_length=255)
 
 
+class SendOtpPayload(BaseModel):
+    email: str
+
+
+class VerifyOtpPayload(BaseModel):
+    email: str
+    otp: str  # 6 碼字串
+
+
+class ResetByOtpPayload(BaseModel):
+    email: str
+    otp: str
+    new_password: str
+
+
 # =========================
 # Profile / Account (已登入敏感操作)
 # - 需要目前密碼 re-auth
