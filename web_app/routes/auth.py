@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from web_app.mysql_connection import get_db_cursor
 from web_app.utils.security import hash_password, verify_password
+from web_app.utils.email_utils import send_otp_email
 from web_app.models.member import (
     # Auth
     LoginPayload,
@@ -299,8 +300,13 @@ async def send_forgot_password_otp(payload: SendOtpPayload):
         "last_sent_at": now,
     }
 
-    # ✅ 開發期：直接印在後端 console（之後再換成 SMTP 寄信）
-    print(f"[DEV OTP] email={email} otp={otp} (valid {OTP_TTL_SECONDS}s)")
+    # ✅ 真正寄出 OTP 信件（HTML + 純文字備援）
+
+    try:
+        send_otp_email(email, otp, OTP_TTL_SECONDS)
+    except Exception:
+        # 寄信失敗：回 500，前端會顯示錯誤提示
+        raise HTTPException(status_code=500, detail="Failed to send OTP email")
 
     return {"message": "otp sent"}
 
