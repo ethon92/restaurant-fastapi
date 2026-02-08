@@ -9,8 +9,6 @@ from web_app.models.member import (
     RegisterPayload,
     # Forgot password
     ForgotPasswordPayload,
-    VerifyIdentityPayload,
-    ResetPasswordPayload,
     SendOtpPayload,
     VerifyOtpPayload,
     ResetByOtpPayload,
@@ -19,6 +17,7 @@ from web_app.models.member import (
     VerifyPasswordPayload,
     UpdateProfilePayload,
     ProfilePayload,
+    ChangePasswordPayload,
 )
 import pymysql
 import re
@@ -205,53 +204,6 @@ async def forgot_password(payload: ForgotPasswordPayload):
         raise HTTPException(status_code=404, detail="Email not found")
 
     return {"message": "forgot-password ok", "email": payload.email}
-
-
-@router.post("/verify-identity")
-async def verify_identity(payload: VerifyIdentityPayload):
-    # 檢查 email + birthday 對不對
-    sql = """
-        SELECT user_id, user_birthday
-        FROM users
-        WHERE user_email = %s
-        LIMIT 1
-    """
-    with get_db_cursor() as cursor:
-        cursor.execute(sql, (payload.email,))
-        user = cursor.fetchone()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="Email not found")
-
-    # payload.birthday 是 date，user["user_birthday"] 也是 date（通常）
-    if str(user["user_birthday"]) != str(payload.birthday):
-        raise HTTPException(status_code=401, detail="Birthday not match")
-
-    return {"message": "identity ok", "email": payload.email}
-
-
-@router.post("/reset-password")
-async def reset_password(payload: ResetPasswordPayload):
-    # 忘記密碼流程通常會搭配：
-    # - verify-identity 成功才允許 reset
-    # 這裡先做最小版：只要 email 存在就更新
-
-    # 更新密碼（hash 後存）
-    update_sql = """
-        UPDATE users
-        SET user_password = %s
-        WHERE user_email = %s
-        LIMIT 1
-    """
-
-    hashed_pwd = hash_password(payload.password)
-
-    with get_db_cursor(commit=True) as cursor:
-        cursor.execute(update_sql, (hashed_pwd, payload.email))
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Email not found")
-
-    return {"message": "reset ok", "email": payload.email}
 
 
 # ============================================================
@@ -442,32 +394,64 @@ async def profile(payload: GetProfilePayload):
     }
 
 
-@router.post("/verify-password")
-async def verify_password_api(payload: VerifyPasswordPayload):
+@router.post("/change-password")
+async def change_password(payload: ChangePasswordPayload):
     """
-    Re-authentication endpoint (for sensitive actions).
-    Profile 頁面，使用者要做「更改密碼」之前，
-    會先呼叫這支 API 讓使用者再輸入一次密碼確認，
-    通過後才允許真的去改密碼
+    已登入修改密碼（與 ForgotPassword/OTP 完全分開）
+    payload:
+      - user_id
+      - current_password
+      - new_password
+
+    流程：
+    1) 查 user_password hash
+    2) verify current_password
+    3) 檢查新密碼規則
+    4) hash new_password 後更新
     """
-    sql = """
+
+    # 0) 新密碼規則檢查（沿用統一規則）
+    _validate_password_or_400(payload.new_password)
+
+    # 避免新密碼與舊密碼相同
+    if payload.current_password == payload.new_password:
+        raise HTTPException(status_code=400, detail="New password must be different")
+
+    # 1) 先查使用者（拿到 password hash）
+    select_sql = """
         SELECT user_password
         FROM users
         WHERE user_id = %s
         LIMIT 1
     """
     with get_db_cursor() as cursor:
-        cursor.execute(sql, (payload.user_id,))
+        cursor.execute(select_sql, (payload.user_id,))
         user = cursor.fetchone()
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # 用 hash 驗證（跟 login 一樣）
+    # 2) 驗證目前密碼
     if not verify_password(payload.current_password, user["user_password"]):
         raise HTTPException(status_code=401, detail="Password incorrect")
 
-    return {"message": "password verified"}
+    # 3) hash 新密碼
+    new_hashed = hash_password(payload.new_password)
+
+    # 4) 更新密碼
+    update_sql = """
+        UPDATE users
+        SET user_password = %s
+        WHERE user_id = %s
+        LIMIT 1
+    """
+    with get_db_cursor(commit=True) as cursor:
+        cursor.execute(update_sql, (new_hashed, payload.user_id))
+        if cursor.rowcount == 0:
+            # 理論上不太會到這，但保險起見
+            raise HTTPException(status_code=404, detail="User not found")
+
+    return {"message": "change-password ok"}
 
 
 @router.put("/profile")

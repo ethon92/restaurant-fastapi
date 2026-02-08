@@ -31,16 +31,6 @@ class ForgotPasswordPayload(BaseModel):
     email: EmailStr
 
 
-class VerifyIdentityPayload(BaseModel):
-    email: EmailStr
-    birthday: date
-
-
-class ResetPasswordPayload(BaseModel):
-    email: EmailStr
-    password: str = Field(..., min_length=1, max_length=255)
-
-
 class SendOtpPayload(BaseModel):
     email: str
 
@@ -86,3 +76,9 @@ class ProfilePayload(BaseModel):
     birthday: str
     role: str
     phone: Optional[str] = None
+
+
+class ChangePasswordPayload(BaseModel):
+    user_id: int
+    current_password: str
+    new_password: str = Field(..., min_length=6, max_length=255)
