@@ -1,6 +1,6 @@
 from web_app.mysql_connection import get_db_cursor
 import pymysql
-from typing import List, Optional
+from typing import List, Optional, Any
 
 class RestaurantService:
     def __init__(self):
@@ -81,9 +81,9 @@ class RestaurantService:
             return cursor.fetchone()
 
 
-    def search(self, q: str, tags: List[str], city: str, price_level: str):
+    def search(self, q: str, tags: List[str], city: List[str], price_level: str):
         has_q = q.strip() != ""
-        has_city = city != "全部"
+        has_city = city and len(city) > 0 and "全部" not in city
         has_price = price_level != "全部"
         has_tags = len(tags) > 0 and any(t.strip() for t in tags)
 
@@ -91,7 +91,7 @@ class RestaurantService:
             return self.get_list(skip=0, limit=20)
 
         sql = "SELECT * FROM restaurants WHERE 1=1"
-        params = []
+        params: List[Any] = []
 
         if has_q:
             sql += " AND (Name LIKE %s OR Description LIKE %s OR `Add` LIKE %s)"
@@ -99,8 +99,9 @@ class RestaurantService:
             params.extend([keyword, keyword, keyword])
 
         if has_city:
-            sql += " AND City = %s"
-            params.append(city)
+            placeholders = ', '.join(['%s'] * len(city))
+            sql += f" AND City IN ({placeholders})"
+            params.extend(city)
 
         if has_price:
             sql += " AND PriceLevel = %s"
@@ -119,15 +120,27 @@ class RestaurantService:
             cursor.execute(sql, tuple(params))
             return cursor.fetchall()
 
-    def get_restaurants_by_bounds(self, min_lat: float, max_lat: float, min_lng: float, max_lng: float):
-        """地圖範圍搜尋"""
+    def get_restaurants_by_bounds(self, min_lat: float, max_lat: float, min_lng: float, max_lng: float, q: Optional[str] = None, city: Optional[List[str]] = None):
+        """地圖範圍搜尋 (支援關鍵字篩選)"""
         sql = """SELECT ID, Name, `Add`, Px, Py, GoogleMap, CoverImage, TagsStr, PriceLevel 
-                 FROM restaurants WHERE 
-                 Py BETWEEN %s AND %s AND Px BETWEEN %s AND %s
-                 LIMIT 150"""
+             FROM restaurants WHERE 
+             Py BETWEEN %s AND %s AND Px BETWEEN %s AND %s"""
+        params: List[Any] = [min_lat, max_lat, min_lng, max_lng]
+        
+        if q and q.strip():
+            sql += " AND (Name LIKE %s OR Description LIKE %s OR `Add` LIKE %s)"
+            keyword = f"%{q.strip()}%"
+            params.extend([keyword, keyword, keyword])
+        if city and len(city) > 0:
+            placeholders = ', '.join(['%s'] * len(city))
+            sql += f" AND City IN ({placeholders})"
+            params.extend(city)
+        
+        sql += " LIMIT 150"
+            
         with get_db_cursor() as cursor:
-            cursor.execute(sql, (min_lat, max_lat, min_lng, max_lng))
-            return cursor.fetchall()
+            cursor.execute(sql, tuple(params))
+        return cursor.fetchall()
 
     # --- 評論與預約邏輯 ---
 
