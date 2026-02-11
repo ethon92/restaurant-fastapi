@@ -21,6 +21,7 @@ class RestaurantSchema(BaseModel):
     Add: Optional[str] = None
     PriceLevel: Optional[str] = None
     Tel: Optional[str] = None
+    City: Optional[str] = None
     Px: Optional[float] = None  
     Py: Optional[float] = None 
     TagsStr: Optional[str] = None
@@ -31,5 +32,5 @@ class RestaurantSchema(BaseModel):
     ServiceTime: Optional[str] = None
     CoverImage: Optional[str] = None
     
-class Config:
+    class Config:
         from_attributes = True
