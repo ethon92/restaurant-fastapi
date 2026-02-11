@@ -84,7 +84,7 @@ def add_favorite(favorite: FavoriteRestaurant):
         raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
 
 
-# 查詢收藏餐廳路由
+# 查詢收藏餐廳路由從使用者頁面
 @router.get("/favorite/{user_id}")
 # 設定user_id必須大於0
 def get_favorite(user_id: Annotated[int, Path(title="The ID of user", gt=0)]):
@@ -101,6 +101,25 @@ def get_favorite(user_id: Annotated[int, Path(title="The ID of user", gt=0)]):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
 
+# 查詢收藏餐廳路由從餐廳頁面
+@router.get("/favorite/{user_id}/{restaurant_id}")
+# 設定user_id必須大於0
+def get_favorite_restaurant(user_id: Annotated[int, Path(title="The ID of user", gt=0)], restaurant_id: str):
+    try:
+        with get_db_cursor() as cursor:
+            sql = """
+                select fav_id from favorite where user_id =%s and restaurant_id=%s
+            """
+            cursor.execute(sql, (user_id, restaurant_id))
+            results = cursor.fetchone()
+            
+            if results is None:
+                exit_or_not = False
+            else:
+                exit_or_not = True
+        return {"status": "Success", "results": exit_or_not}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
 
 # 刪除收藏餐廳路由從使用這頁面
 @router.delete("/favorite/{fav_id}")
