@@ -14,3 +14,23 @@ class ReservationRequest(BaseModel):
     note: Optional[str] = None
     booking_status: Optional[str] = "confirmed"
     
+
+class RestaurantSchema(BaseModel):
+    ID: str
+    Name: str
+    Add: Optional[str] = None
+    PriceLevel: Optional[str] = None
+    Tel: Optional[str] = None
+    City: Optional[str] = None
+    Px: Optional[float] = None  
+    Py: Optional[float] = None 
+    TagsStr: Optional[str] = None
+    Description: Optional[str] = None
+    GoogleMap: Optional[str] = None
+    Website: Optional[str] = None
+    Parking: Optional[str] = None
+    ServiceTime: Optional[str] = None
+    CoverImage: Optional[str] = None
+    
+    class Config:
+        from_attributes = True

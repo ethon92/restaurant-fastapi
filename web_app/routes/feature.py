@@ -103,23 +103,22 @@ def get_favorite(user_id: Annotated[int, Path(title="The ID of user", gt=0)]):
 
 
 # 刪除收藏餐廳路由
-@router.delete("/favorite/{user_id}/{restaurant_id}")
+@router.delete("/favorite/{fav_id}")
 def delete_favorite(
-    user_id: Annotated[int, Path(title="The ID of user", gt=0)], restaurant_id: str
-):
+    fav_id: Annotated[int, Path(title="The ID of user", gt=0)]):
     try:
         with get_db_cursor(commit=True) as cursor:
             # 檢查此筆資料是否存在
             cursor.execute(
-                "select * from favorite where user_id=%s and restaurant_id=%s",
-                (user_id, restaurant_id),
+                "select * from favorite where fav_id=%s",
+                (fav_id),
             )
             result = cursor.fetchone()
             # 若不存在丟出404錯誤
             if not result:
                 raise HTTPException(status_code=404, detail="沒有此筆資料!!")
-            delete_sql = "delete from favorite where user_id=%s and restaurant_id=%s"
-            cursor.execute(delete_sql, (user_id, restaurant_id))
+            delete_sql = "delete from favorite where fav_id=%s"
+            cursor.execute(delete_sql, (fav_id))
             return {
                 "status": "Success",
             }
