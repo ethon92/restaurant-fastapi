@@ -31,14 +31,19 @@ class ForgotPasswordPayload(BaseModel):
     email: EmailStr
 
 
-class VerifyIdentityPayload(BaseModel):
-    email: EmailStr
-    birthday: date
+class SendOtpPayload(BaseModel):
+    email: str
 
 
-class ResetPasswordPayload(BaseModel):
-    email: EmailStr
-    password: str = Field(..., min_length=1, max_length=255)
+class VerifyOtpPayload(BaseModel):
+    email: str
+    otp: str  # 6 碼字串
+
+
+class ResetByOtpPayload(BaseModel):
+    email: str
+    otp: str
+    new_password: str
 
 
 # =========================
@@ -48,16 +53,32 @@ class ResetPasswordPayload(BaseModel):
 
 
 class GetProfilePayload(BaseModel):
-    email: EmailStr
+    user_id: int
 
 
 class VerifyPasswordPayload(BaseModel):
-    email: EmailStr
+    user_id: int
     current_password: str
 
 
 class UpdateProfilePayload(BaseModel):
-    email: EmailStr
-    name: str = Field(..., min_length=1, max_length=20)
+    user_id: int
+    name: str
     birthday: Optional[date] = None
+    phone: Optional[str] = None
     current_password: str
+
+
+class ProfilePayload(BaseModel):
+    user_id: int
+    name: str
+    email: str
+    birthday: str
+    role: str
+    phone: Optional[str] = None
+
+
+class ChangePasswordPayload(BaseModel):
+    user_id: int
+    current_password: str
+    new_password: str = Field(..., min_length=6, max_length=255)
