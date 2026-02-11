@@ -20,9 +20,11 @@ def search_restaurants(
     city: List[str] = Query(default=[]),
     tags: List[str] = Query(default=[]),
     price_level: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 5,
 ):
     return service.search(
-        q=q or "", city=city, tags=tags, price_level=price_level or "全部"
+        q=q or "", city=city, tags=tags, price_level=price_level or "全部", skip=skip, limit=limit
     )
 
 

@@ -81,7 +81,10 @@ class RestaurantService:
             return cursor.fetchone()
 
 
-    def search(self, q: str, tags: List[str], city: List[str], price_level: str):
+    def search(self, q: str, tags: List[str], city: List[str], price_level: str, skip: int=0, limit: int =5):
+        sql="SELECT * FROM restaurants WHERE 1=1"
+        params = []
+        
         has_q = q.strip() != ""
         has_city = city and len(city) > 0 and "全部" not in city
         has_price = price_level != "全部"
@@ -115,6 +118,9 @@ class RestaurantService:
                     params.append(f"%{t.strip()}%")
             if tag_conditions:
                 sql += " AND (" + " OR ".join(tag_conditions) + ")"
+        
+        sql += "LIMIT %s OFFSET %s"
+        params.extend([limit,skip])
 
         with get_db_cursor() as cursor:
             cursor.execute(sql, tuple(params))
