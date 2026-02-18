@@ -1,5 +1,5 @@
 from pydantic import BaseModel,EmailStr, Field
-from typing import Optional
+from typing import Optional,List
 from datetime import datetime
 
 
@@ -14,6 +14,11 @@ class ReservationRequest(BaseModel):
     note: Optional[str] = None
     booking_status: Optional[str] = "confirmed"
     
+class RestaurantImageSchema(BaseModel):
+    image_url: str
+    
+    class Config:
+        from_attributes = True
 
 class RestaurantSchema(BaseModel):
     ID: str
@@ -31,6 +36,7 @@ class RestaurantSchema(BaseModel):
     Parking: Optional[str] = None
     ServiceTime: Optional[str] = None
     CoverImage: Optional[str] = None
+    images: List[RestaurantImageSchema] = []
     
     class Config:
         from_attributes = True
