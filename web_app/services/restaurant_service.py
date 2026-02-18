@@ -63,6 +63,21 @@ class RestaurantService:
                         print(f" 效能優化：索引 {idx_name} 建立成功！")
                     except Exception as e:
                         print(f" 建立索引 {idx_name} 失敗: {e}")
+                        
+             # 4.建立restaurant_images關聯表
+            cursor.execute("SHOW TABLES LIKE 'restaurant_images'")
+            if not cursor.fetchone():
+                 create_img_sql = """
+            CREATE TABLE restaurant_images (
+                image_id INT AUTO_INCREMENT PRIMARY KEY,
+                restaurant_id VARCHAR(50),
+                image_url VARCHAR(255),
+                FOREIGN KEY (restaurant_id) REFERENCES restaurants(ID) ON DELETE CASCADE
+            );
+            """
+            cursor.execute(create_img_sql)
+            print("Table 'restaurant_images' created.")
+                 
 
     # --- 餐廳查詢相關邏輯 ---
 
@@ -74,11 +89,21 @@ class RestaurantService:
             return cursor.fetchall()
 
     def get_detail_by_id(self, restaurant_id: str):
-        """取得單一餐廳詳情"""
-        sql = "SELECT * FROM restaurants WHERE ID = %s"
+        """取得單一餐廳詳情，含隨機選取的圖片"""
+        sql_main = "SELECT * FROM restaurants WHERE ID = %s"
+        
+        sql_images = "SELECT image_url FROM restaurant_images WHERE restaurant_id = %s"
+        
         with get_db_cursor() as cursor:
-            cursor.execute(sql, (restaurant_id,))
-            return cursor.fetchone()
+            cursor.execute(sql_main, (restaurant_id,))
+            restaurant = cursor.fetchone()
+            
+            if restaurant:
+                cursor.execute(sql_images, (restaurant_id,))
+            images = cursor.fetchall() 
+            restaurant['images'] = images
+            
+        return restaurant
 
 
     def search(self, q: str, tags: List[str], city: List[str], price_level: str, skip: int=0, limit: int =5):

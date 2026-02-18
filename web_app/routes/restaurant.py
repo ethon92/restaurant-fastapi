@@ -47,8 +47,17 @@ def get_restaurant_detail(id: str):
     info = service.get_detail_by_id(id)
     if not info:
         raise HTTPException(status_code=404, detail="找不到此餐廳")
-    gallery_images = [info["CoverImage"]] if info.get("CoverImage") else []
-    return {"info": info, "gallery": gallery_images}
+    random_images = info.get("images", [])
+    info.pop("images", None)
+    return {
+        "status": "Success",
+        "info": info,             
+        "gallery": random_images 
+    }
+    
+    
+    # gallery_images = [info["CoverImage"]] if info.get("CoverImage") else []
+    # return {"info": info, "gallery": gallery_images}
 
 
 # 5. [查詢餐廳評論 API]
