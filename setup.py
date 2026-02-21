@@ -79,9 +79,9 @@ create_reservations = """
 
 try:
     with get_db_cursor(commit=True) as cursor:
+        setup_database("users", create_users, cursor).create_table()
         setup_database("comments", create_comments, cursor).create_table()
         setup_database("favorite", create_favorite, cursor).create_table()
-        setup_database("users", create_users, cursor).create_table()
         setup_database("reservations", create_reservations, cursor).create_table()
 except HTTPException:
     raise
