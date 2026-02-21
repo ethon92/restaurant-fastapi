@@ -91,7 +91,7 @@ def get_favorite(user_id: Annotated[int, Path(title="The ID of user", gt=0)]):
     try:
         with get_db_cursor() as cursor:
             sql = """
-                select fav_id, user_id, fav_note, Name, CoverImage 
+                select fav_id favId, user_id userId, fav_note favNote, Name name, CoverImage coverImage, restaurant_id restaurantId
                 from favorite join restaurants on restaurant_id = ID 
                 where user_id =%s
             """
