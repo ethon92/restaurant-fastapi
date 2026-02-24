@@ -1,65 +1,86 @@
-# 🚀 團隊開發 Git 指令懶人包
+# 🍴 餐廳預約系統後端 (Restaurant Reservation FastApi)
 
-為了確保大家開發順利，請遵守以下流程：
+這是一個基於 **FastAPI** 構建的高效能餐廳預約系統後端，負責處理從會員驗證、餐廳數據檢索到自動化郵件通知的核心業務邏輯。
 
-1. 每天開工前：同步最新進度
+## 🚀 核心功能
 
-開發前先確保你的本地 `develop` 分支是最新的。
+### 🔐 會員與認證管理
 
-    git checkout develop
-    git pull origin develop
+* **身份驗證系統**：實作註冊、登入與登出流程。
+* **安全機制**：使用 SHA256 搭配 Salt (鹽值) 進行密碼雜湊儲存，確保使用者資料安全。
+* **帳號恢復**：整合 SMTP 服務發送電子郵件驗證碼 (OTP)，支援忘記密碼與重設密碼功能。
+* **個人資料管理**：支援查看帳號總覽、修改個人資料與更新密碼。
 
-2. 開發新功能：建立分支
+### 🍽️ 餐廳搜尋與地圖服務
 
-禁止直接在 `develop` 或 `main` 分支開發。請根據功能建立新分支：
+* **多維度搜尋**：支援透過關鍵字、城市、價格等級及特定主題標籤（如：下午茶、約會）進行篩選。
+* **地圖 API 整合**：提供經緯度範圍搜尋（Bounds Search），支援前端 Leaflet 的標記聚合功能。
+* **詳細資訊展示**：提供餐廳環境、營業資訊及評分數據。
 
-    # 格式：feature/功能名稱
-    git checkout -b feature/login-page
+### 📅 預約與互動功能
 
-3. 開發中：頻繁提交 (Commit)
+* **線上預約系統**：實作完整的訂位流程，包含時段衝突檢查（防止重複預約）與預約紀錄查詢。
+* **收藏系統**：使用者可收藏心儀餐廳並撰寫個人備註。
+* **評論系統**：支援 CRUD 評論操作，讓使用者分享真實餐飲體驗。
 
-當你完成一個小階段（例如寫好一個 function 或刻好一個元件）：
+---
 
-    git add .
-    git commit -m "feat: 完成登入 API 串接"
+## 🛠️ 技術堆疊 (Technical Stack)
 
-&emsp; Commit 訊息規範：
+### 核心框架與工具
 
-&emsp; * `feat`: 新功能
+* **FastAPI**：高效能的 Python Web 框架，利用非同步 (Asynchronous) 特性處理高併發請求。
+* **SQLAlchemy**：強大的 SQL 工具包與 ORM 模型，負責資料庫結構定義與互動。
+* **Pydantic**：用於資料驗證與設定管理，確保 API 輸入輸出的正確性。
+* **Uvicorn**：作為 ASGI 伺服器，負責執行 FastAPI 應用程式。
 
-&emsp; * `fix`: 修補 Bug
+### 資料庫與數據分析
 
-&emsp; * `style`: 修改 UI 樣式 (不影響邏輯)
+* **PyMySQL**：純 Python 實作的 MySQL 驅動程式。
+* **Pandas**：用於後端數據清理與複雜的餐廳資料處理。
 
-&emsp; * `docs`: 修改文件
+### 安全與通訊
 
-4. 完工後：上傳並發起合併請求 (PR)
+* **Cryptography**：提供底層加密演算法支援。
+* **SMTPLIB**：整合電子郵件發送功能，處理 OTP 驗證碼郵件。
+* **Python-Dotenv**：管理環境變數（如資料庫連線字串、金鑰等），提升部署安全性。
 
-將你的功能分支推送到 GitHub：
+---
 
-`git push origin feature/login-page`
+## 📂 專案結構說明
 
-接下來的操作：
-* 前往 GitHub 頁面。
-* 點擊 "Compare & pull request"。
-* Base 選擇 `develop`，Compare 選擇你的分支。
-* 標記一位隊友(Reviewer) 幫你檢查 Code。
+* `main.py`: 應用程式進入點、CORS 設定及路由註冊。
+* `routes/`: 定義 API 端點（Auth, Account, Restaurant, Feature）。
+* `services/`: 封裝核心業務邏輯，例如餐廳搜尋演算法。
+* `models/`: 定義資料庫 Schema 與 Pydantic 驗證模型。
+* `utils/`: 存放安全性加密 (Security) 與郵件工具 (Email Utils)。
 
-5. 遇到衝突 (Conflict) 怎麼辦？
+---
 
-如果 PR 顯示有衝突，請在本地執行：
+## 💻 快速開始
 
-    git checkout develop
-    git pull origin develop
-    git checkout feature/your-branch
-    git merge develop
+### 環境需求
 
-在 VS Code 中解決衝突標記後：
+* **Python**: 3.12+
+* **資料庫**: MySQL
 
-    git add .
-    git commit -m "chore: 解決合併衝突"
-    git push origin feature/your-branch
+### 安裝與啟動
 
-***💡 小提醒***
-* 不要隨便使用 `git push -f` (強推)，這會覆蓋掉隊友的 Code。
+1. **安裝依賴套件**：
+```bash
+pip install fastapi[all] sqlalchemy pymysql pandas cryptography python-dotenv
 
+```
+
+
+2. **配置環境變數**：
+在根目錄建立 `.env` 檔案並填入資料庫連線、SMTP 設定與 PWD_SALT。
+3. **啟動開發伺服器**：
+```bash
+uvicorn main:app --reload
+
+```
+
+
+4. **API 文檔**：
+啟動後訪問 `http://127.0.0.1:8000/docs` 即可查看 Swagger UI 自動生成的互動式文檔。
