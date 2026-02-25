@@ -21,15 +21,13 @@ engine = create_engine(connection_str)
 
 # 2. 定義建表 SQL (依照您的結構)
 create_table_sql = """
-CREATE TABLE IF NOT EXISTS comments (
-    comment_id INT PRIMARY KEY AUTO_INCREMENT,
-    user_id INT NOT NULL,
-    restaurant_id VARCHAR(50) NOT NULL,            
-    comment_content VARCHAR(1000) NOT NULL,   
-    rating INT NOT NULL CHECK(rating >= 1 AND rating <= 5),
-    comment_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_restaurant (restaurant_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+create table if not exists comments (
+        comment_id int primary key auto_increment,
+        user_id int not null,
+        restaurant_id varchar(50) not null,             
+        comment_content varchar(255) not null,   
+        rating int not null check(rating >= 1 AND rating <= 5),
+        comment_time DATETIME DEFAULT CURRENT_TIMESTAMP );
 """
 
 # 3. 執行建表
