@@ -13,23 +13,23 @@ class RestaurantService:
             cursor.execute("SHOW TABLES LIKE 'reservations'")
             if not cursor.fetchone():
                 create_res_sql = """
-                CREATE TABLE reservations (
-                    booking_id INT AUTO_INCREMENT PRIMARY KEY,
-                    restaurant_name varchar(100),
-                    user_id int,
-                    user_name Varchar(50),
-                    phone varchar(20),
-                    email varchar(100),
-                    party_size int,
-                    note text,
-                    booking_time datetime,
-                    booking_status Varchar(30) DEFAULT 'confirmed',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    is_commented tinyint(1) NOT NULL DEFAULT 0 COMMENT
-                    CONSTRAINT fk_reservations_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT,
-                    CONSTRAINT unique_booking UNIQUE (user_id, booking_time)
-                );
-                """
+CREATE TABLE reservations (
+    booking_id INT AUTO_INCREMENT PRIMARY KEY,
+    restaurant_name VARCHAR(100),
+    user_id INT,
+    user_name VARCHAR(50),
+    phone VARCHAR(20),
+    email VARCHAR(100),
+    party_size INT,
+    note TEXT,
+    booking_time DATETIME,
+    booking_status VARCHAR(30) DEFAULT 'confirmed',
+    is_commented TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已評論：0為否，1為是',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_reservations_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT,
+    CONSTRAINT unique_booking UNIQUE (user_id, booking_time)
+);
+"""
                 cursor.execute(create_res_sql)
                 print("Table 'reservations' created.")
 
