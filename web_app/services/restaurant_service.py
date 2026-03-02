@@ -25,6 +25,7 @@ class RestaurantService:
                     booking_time datetime,
                     booking_status Varchar(30) DEFAULT 'confirmed',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_commented tinyint(1) NOT NULL DEFAULT 0 COMMENT
                     CONSTRAINT fk_reservations_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT,
                     CONSTRAINT unique_booking UNIQUE (user_id, booking_time)
                 );

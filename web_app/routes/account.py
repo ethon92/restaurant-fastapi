@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Path, HTTPException
 from web_app.mysql_connection import get_db_cursor
+from web_app.models.feature import UpdateCommentStatus
 import pymysql
 from typing import Annotated
 
@@ -43,6 +44,40 @@ def get_comment(user_id:Annotated[int, Path(title="The ID of user", gt=0)]):
         return {"status": "Success", "user_id": user_id, "results": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"資料庫錯誤:{e}")
+    
+@router.put("/booking/comment-status")
+def update_comment_status(update: UpdateCommentStatus):
+    try:
+        with get_db_cursor(commit=True) as cursor:
+            # 1. 檢查此筆訂位紀錄是否存在
+            cursor.execute(
+                "SELECT * FROM reservations WHERE booking_id = %s",
+                (update.booking_id,)
+            )
+            result = cursor.fetchone()
+            
+            # 若不存在則丟出 404 錯誤
+            if not result:
+                raise HTTPException(status_code=404, detail="找不到此筆訂位紀錄!!")
+            
+            # 2. 執行更新：將 is_commented 設為 1
+            update_sql = (
+                "UPDATE reservations SET is_commented = 1 WHERE booking_id = %s"
+            )
+            cursor.execute(
+                update_sql, (update.booking_id,)
+            )
+            
+            return {
+                "status": "Success",
+                "message": "評論狀態已更新"
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        # 捕捉資料庫或其他非預期錯誤
+        raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
 
 
 @router.get("/booking-record/{user_id}")
@@ -50,8 +85,8 @@ def get_booking_record(user_id: Annotated[int, Path(title="The ID of user", gt=0
     try:
         with get_db_cursor() as cursor:
             sql = """
-                select booking_id id, restaurant_name name, created_at time, booking_status status
-                from reservations where user_id = %s
+                select booking_id id, restaurant_name name,ID, created_at time, booking_status status, is_commented
+                from reservations join restaurants on restaurant_name=Name where user_id = %s
             """
             cursor.execute(sql, (user_id))
             results = cursor.fetchall()
