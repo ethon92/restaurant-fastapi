@@ -207,17 +207,6 @@ def add_comment(comments: RestaurantComment):
     try:
         with get_db_cursor(commit=True) as cursor:
             create_table(cursor)
-            cursor.execute(
-                "select * from comments where user_id=%s and restaurant_id=%s",
-                (
-                    comments.user_id,
-                    comments.restaurant_id,
-                ),
-            )
-            result = cursor.fetchone()
-            if result is not None:
-                raise HTTPException(status_code=409, detail="已完成評論!!")
-
             sql = "insert into comments(user_id,restaurant_id, comment_content,rating) values(%s,%s,%s,%s)"
             cursor.execute(
                 sql,
@@ -228,7 +217,7 @@ def add_comment(comments: RestaurantComment):
                     comments.rating,
                 ),
             )
-            return {"status": "Success"}
+            return {"status": "評論新增"}
     except HTTPException:
         raise
     except Exception as e:

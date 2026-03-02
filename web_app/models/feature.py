@@ -14,3 +14,6 @@ class RestaurantComment(BaseModel):
     restaurant_id: str
     comment_content: str
     rating: int
+
+class UpdateCommentStatus(BaseModel):
+    booking_id: int
