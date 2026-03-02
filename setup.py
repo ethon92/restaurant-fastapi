@@ -53,6 +53,7 @@ create_users = """
                 `user_password` VARCHAR(255) NOT NULL,
                 `user_birthday` DATE NOT NULL,
                 `user_role` BOOLEAN DEFAULT 0,
+                `avatar_path` VARCHAR(255) NULL,
                 PRIMARY KEY (`user_id`),
                 UNIQUE KEY `uq_users_email` (`user_email`)
         );
