@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
 from pydantic import BaseModel
 from web_app.mysql_connection import get_db_cursor
 from web_app.utils.security import hash_password, verify_password
@@ -19,11 +19,22 @@ from web_app.models.member import (
     ProfilePayload,
     ChangePasswordPayload,
 )
+from typing import Optional
 import pymysql
 import re
 import time
 import secrets
 import hashlib
+import os, uuid, imghdr
+
+# ============================================================
+# Avatar upload settings (存後端 static)
+# ============================================================
+MAX_AVATAR_BYTES = 2 * 1024 * 1024  # 2MB
+ALLOWED_MIME = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+
+AVATAR_DIR = os.path.join("static", "avatars")
+os.makedirs(AVATAR_DIR, exist_ok=True)
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -54,17 +65,18 @@ def _validate_password_or_400(password: str):
 def create_table(cursor):
     create_query = """
         CREATE TABLE IF NOT EXISTS `users` (
-        `user_id` INTEGER NOT NULL AUTO_INCREMENT,
-        `user_name` VARCHAR(20),
-        `user_email` VARCHAR(30) NOT NULL,
-        `user_phone` VARCHAR(10) NULL,
-        `user_password` VARCHAR(255) NOT NULL,
-        `user_birthday` DATE NOT NULL,
-        `user_role` BOOLEAN DEFAULT 0,
-        PRIMARY KEY (`user_id`),
-        UNIQUE KEY `uq_users_email` (`user_email`)
-);
-        """
+            `user_id` INTEGER NOT NULL AUTO_INCREMENT,
+            `user_name` VARCHAR(20),
+            `user_email` VARCHAR(30) NOT NULL,
+            `user_phone` VARCHAR(10) NULL,
+            `user_password` VARCHAR(255) NOT NULL,
+            `user_birthday` DATE NOT NULL,
+            `user_role` BOOLEAN DEFAULT 0,
+            `avatar_path` VARCHAR(255) NULL,
+            PRIMARY KEY (`user_id`),
+            UNIQUE KEY `uq_users_email` (`user_email`)
+        );
+    """
 
     # 當沒有table時才建立
     try:
@@ -369,6 +381,36 @@ async def reset_password_by_otp(payload: ResetByOtpPayload):
 # ============================================================
 
 
+# ============================================================
+# Avatar DB helpers
+# ============================================================
+def get_user_avatar_path(user_id: int) -> Optional[str]:
+    sql = "SELECT avatar_path FROM users WHERE user_id=%s LIMIT 1"
+    with get_db_cursor() as cursor:
+        cursor.execute(sql, (user_id,))
+        row = cursor.fetchone()
+    return row["avatar_path"] if row else None
+
+
+def set_user_avatar_path(user_id: int, avatar_path: str):
+    sql = "UPDATE users SET avatar_path=%s WHERE user_id=%s LIMIT 1"
+    with get_db_cursor(commit=True) as cursor:
+        cursor.execute(sql, (avatar_path, user_id))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+
+
+def clear_user_avatar_path(user_id: int):
+    sql = "UPDATE users SET avatar_path=NULL WHERE user_id=%s LIMIT 1"
+    with get_db_cursor(commit=True) as cursor:
+        cursor.execute(sql, (user_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+
+
+# ============================================================
+
+
 @router.post("/profile")
 async def profile(payload: GetProfilePayload):
     sql = """
@@ -510,3 +552,98 @@ async def update_profile(payload: UpdateProfilePayload):
             raise HTTPException(status_code=404, detail="User not found")
 
     return {"message": "update ok"}
+
+
+# ============================================================
+# 上傳/更換：POST /auth/avatar
+# ============================================================
+@router.post("/avatar")
+async def upload_avatar(user_id: int = Form(...), file: UploadFile = File(...)):
+    # ✅ 先確認 user_id 存在
+    with get_db_cursor() as cursor:
+        cursor.execute("SELECT user_id FROM users WHERE user_id=%s LIMIT 1", (user_id,))
+        if not cursor.fetchone():
+            raise HTTPException(404, "User not found")
+    """
+    上傳/更換大頭貼：
+    - 存到 static/avatars/
+    - DB 更新 users.avatar_path
+    - 若舊的存在：刪舊檔（避免 static 堆垃圾）
+    """
+    # 1) MIME 檢查
+    if file.content_type not in ALLOWED_MIME:
+        raise HTTPException(status_code=400, detail="Only JPG/PNG/WEBP allowed")
+
+    data = await file.read()
+
+    # 2) 大小限制
+    if len(data) > MAX_AVATAR_BYTES:
+        raise HTTPException(status_code=400, detail="Avatar must be <= 2MB")
+
+    # 3) 真圖片檢查（避免假檔）
+    kind = imghdr.what(None, h=data)
+    if kind not in {"jpeg", "png", "webp"}:
+        raise HTTPException(status_code=400, detail="Invalid image")
+
+    # 4) 先查舊檔路徑（存在就等等刪）
+    old_path = get_user_avatar_path(user_id)
+
+    # 5) 存新檔
+    ext = ALLOWED_MIME[file.content_type]
+    filename = f"user_{user_id}_{uuid.uuid4().hex}.{ext}"
+    save_path = os.path.join(AVATAR_DIR, filename)
+    with open(save_path, "wb") as f:
+        f.write(data)
+
+    avatar_path = f"/static/avatars/{filename}"
+
+    # 6) DB 更新成新路徑
+    set_user_avatar_path(user_id, avatar_path)
+
+    # 7) 刪舊檔（刪檔失敗也不要讓 API 整個 500）
+    if old_path:
+        try:
+            old_fs_path = "." + old_path  # "/static/.." -> "./static/.."
+            if os.path.exists(old_fs_path):
+                os.remove(old_fs_path)
+        except Exception:
+            pass
+
+    return {"message": "avatar updated", "avatar_path": avatar_path}
+
+
+# ============================================================
+# 取得可用 URL：GET /auth/avatar-url
+# ============================================================
+@router.get("/avatar-url")
+def get_avatar_url(request: Request, user_id: int):
+    """
+    前端顯示用：回傳完整 URL
+    - 如果沒頭貼：回傳空字串
+    """
+    avatar_path = get_user_avatar_path(user_id)
+    if not avatar_path:
+        return {"url": ""}
+
+    base = str(request.base_url).rstrip("/")
+    return {"url": f"{base}{avatar_path}"}
+
+
+# ============================================================
+# 刪除：DELETE /auth/avatar
+# ============================================================
+@router.delete("/avatar")
+def delete_avatar(user_id: int):
+    """
+    移除大頭貼：
+    - 刪檔
+    - DB 清空 avatar_path
+    """
+    avatar_path = get_user_avatar_path(user_id)
+    if avatar_path:
+        fs_path = "." + avatar_path
+        if os.path.exists(fs_path):
+            os.remove(fs_path)
+
+    clear_user_avatar_path(user_id)
+    return {"message": "avatar removed"}
