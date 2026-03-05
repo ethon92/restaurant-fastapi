@@ -2,6 +2,7 @@ from fastapi import APIRouter, Path, HTTPException
 from web_app.models.feature import FavoriteRestaurant
 from web_app.models.feature import RestaurantComment
 from web_app.models.feature import UpdateFavorite
+from web_app.models.feature import updateRestaurantComment
 from web_app.mysql_connection import get_db_cursor
 import pymysql
 from typing import Annotated
@@ -249,7 +250,7 @@ def delete_comment(
 
 # 更新評論餐廳路由
 @router.put("/comments")
-def update_comment(update: RestaurantComment):
+def update_comment(update: updateRestaurantComment):
     try:
         with get_db_cursor(commit=True) as cursor:
             cursor.execute(

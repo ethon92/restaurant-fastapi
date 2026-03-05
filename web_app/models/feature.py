@@ -10,6 +10,12 @@ class UpdateFavorite(BaseModel):
     fav_note: str | None
 
 class RestaurantComment(BaseModel):
+    user_id: int
+    restaurant_id: str
+    comment_content: str
+    rating: int
+
+class updateRestaurantComment(BaseModel):
     comment_id: int
     user_id: int
     restaurant_id: str
