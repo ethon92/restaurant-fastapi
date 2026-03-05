@@ -49,6 +49,7 @@ create_users = """
                 `user_id` INTEGER NOT NULL AUTO_INCREMENT,
                 `user_name` VARCHAR(20),
                 `user_email` VARCHAR(30) NOT NULL,
+                `user_phone` VARCHAR(10) NULL,
                 `user_password` VARCHAR(255) NOT NULL,
                 `user_birthday` DATE NOT NULL,
                 `user_role` BOOLEAN DEFAULT 0,
