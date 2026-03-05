@@ -225,21 +225,21 @@ def add_comment(comments: RestaurantComment):
 
 
 # 刪除評論餐廳路由
-@router.delete("/comments/{user_id}/{restaurant_id}")
+@router.delete("/comments/{user_id}/{comment_id}")
 def delete_comment(
-    user_id: Annotated[int, Path(tittle="The ID of user", gt=0)], restaurant_id: str
+    user_id: Annotated[int, Path(tittle="The ID of user", gt=0)], comment_id: int
 ):
     try:
         with get_db_cursor(commit=True) as cursor:
             cursor.execute(
-                "select * from comments where user_id=%s and restaurant_id=%s",
-                (user_id, restaurant_id),
+                "select * from comments where user_id=%s and comment_id=%s",
+                (user_id, comment_id),
             )
             result = cursor.fetchone()
             if not result:
                 raise HTTPException(status_code=404, detail="沒有此筆資料!!")
-            delete_sql = "delete from comments where user_id=%s and restaurant_id=%s"
-            cursor.execute(delete_sql, (user_id, restaurant_id))
+            delete_sql = "delete from comments where user_id=%s and comment_id=%s"
+            cursor.execute(delete_sql, (user_id, comment_id))
             return {"status": "Success"}
     except HTTPException:
         raise
@@ -253,16 +253,16 @@ def update_comment(update: RestaurantComment):
     try:
         with get_db_cursor(commit=True) as cursor:
             cursor.execute(
-                "select * from comments where user_id=%s and restaurant_id=%s",
-                (update.user_id, update.restaurant_id),
+                "select * from comments where user_id=%s and comment_id=%s",
+                (update.user_id, update.comment_id),
             )
             result = cursor.fetchone()
             if not result:
                 raise HTTPException(status_code=404, detail="沒有此筆資料!!")
-            update_sql = "update comments set comment_content=%s where user_id=%s and restaurant_id=%s"
+            update_sql = "update comments set comment_content=%s where user_id=%s and comment_id=%s"
             cursor.execute(
                 update_sql,
-                (update.comment_content, update.user_id, update.restaurant_id),
+                (update.comment_content, update.user_id, update.comment_id),
             )
             return {
                 "status": "Success",

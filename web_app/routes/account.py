@@ -37,13 +37,14 @@ def get_comment(user_id:Annotated[int, Path(title="The ID of user", gt=0)]):
     try:
         with get_db_cursor() as cursor:
             sql = """
-                select comment_id, user_id, Name, comment_content, rating, comment_time from comments join restaurants on restaurant_id = ID where user_id=%s;
+                select comment_id, user_id, Name,restaurant_id, comment_content, rating, comment_time from comments join restaurants on restaurant_id = ID where user_id=%s;
                 """
             cursor.execute(sql, (user_id))
             results = cursor.fetchall()
         return {"status": "Success", "user_id": user_id, "results": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"資料庫錯誤:{e}")
+
     
 @router.put("/booking/comment-status")
 def update_comment_status(update: UpdateCommentStatus):
