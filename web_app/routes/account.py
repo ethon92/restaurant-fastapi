@@ -80,7 +80,7 @@ def update_comment_status(update: UpdateCommentStatus):
         # 捕捉資料庫或其他非預期錯誤
         raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
 
-
+# 查詢餐廳預約紀錄API
 @router.get("/booking-record/{user_id}")
 def get_booking_record(user_id: Annotated[int, Path(title="The ID of user", gt=0)]):
     try:
@@ -91,7 +91,11 @@ def get_booking_record(user_id: Annotated[int, Path(title="The ID of user", gt=0
             """
             cursor.execute(sql, (user_id))
             results = cursor.fetchall()
-
+            
+            # 只顯示訂位日期
+            for item in results:
+                item['time'] = item['time'].strftime("%Y-%m-%d")
+                
             return {"status": "Success", "user_id": user_id, "results": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
