@@ -60,7 +60,7 @@ async def get_restaurants_by_bounds(
     return results if results else []
 
 
-# 已圖片推薦餐廳 API
+# 以圖片推薦餐廳 API
 @router.post("/api/search/image")
 async def api_search_image(
     file: UploadFile = File(...),

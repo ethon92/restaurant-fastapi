@@ -7,6 +7,7 @@ from tqdm import tqdm
 import shutil
 import uuid
 from pathlib import Path
+from web_app.mysql_connection import get_db_cursor
 
 class PhotoSearchService:
     def __init__(self, db_path: str, collection_name: str):
@@ -28,11 +29,13 @@ class PhotoSearchService:
         - csv_path: Restaurants_1.csv 的路徑
         - photos_dir: restaurant_photos_1 資料夾路徑
         """
-        # 1. 讀取 CSV 建立 餐廳名稱 -> 縣市 的對照表
+        # 1. 讀取 CSV 建立 餐廳名稱 -> {ID, City} 的對照表
         print(f"正在讀取資料表: {csv_path}")
         df = pd.read_csv(csv_path)
-        # 建立字典加速查詢
-        city_map = dict(zip(df["Name"], df["City"]))
+        
+        # 建立一個字典，Key 是 Name，Value 是包含 ID 和 City 的小字典
+        # 使用 set_index 和 to_dict 來快速建立對照表
+        restaurant_info_map = df.set_index("Name")[["ID", "City"]].to_dict(orient='index')
 
         # 2. 掃描資料夾
         image_uris = []
@@ -44,7 +47,11 @@ class PhotoSearchService:
         restaurant_folders = [d for d in os.listdir(photos_dir) if os.path.isdir(os.path.join(photos_dir, d))]
 
         for rest_name in restaurant_folders:
-            city = city_map.get(rest_name, "未知") # 從 CSV 比對縣市
+            # 從對照表取得資訊，若找不到則給予預設值
+            info = restaurant_info_map.get(rest_name, {"ID": "未知", "City": "未知"})
+            rest_id = info["ID"]
+            city = info["City"]
+            
             rest_path = os.path.join(photos_dir, rest_name)
             
             for img_name in os.listdir(rest_path):
@@ -53,6 +60,7 @@ class PhotoSearchService:
                     
                     image_uris.append(full_path)
                     metadatas.append({
+                        "id": str(rest_id),
                         "restaurant_name": rest_name,
                         "city": city,
                         "file_name": img_name
@@ -65,7 +73,11 @@ class PhotoSearchService:
         
         # 如果要重建，可以先刪除舊資料 (選用)
         # self.client.delete_collection(self.collection.name)
-        # self.collection = self.client.get_or_create_collection(...)
+        # self.collection = self.client.get_or_create_collection(
+        #     name=self.collection.name,
+        #     embedding_function=self.embedding_function,
+        #     data_loader=self.image_loader
+        # )
 
         for i in tqdm(range(0, len(ids), batch_size)):
             end = i + batch_size
@@ -92,27 +104,60 @@ class PhotoSearchService:
         return self._format_results(results)
     
     def _format_results(self, results):
-        """格式化回傳結果"""
+        """
+        格式化回傳結果：
+        1. 從向量資料庫的 metadata 取得 ID
+        2. 根據 ID 到 MySQL 抓取最新的餐廳詳細資料
+        """
         formatted = []
         if not results["ids"] or len(results["ids"][0]) == 0:
             return formatted
 
+        # 收集所有的 ID (轉換成字串列表，方便 MySQL 的 IN 查詢)
+        restaurant_ids = [str(meta["id"]) for meta in results["metadatas"][0]]
+
+        # 建立 MySQL 資料快取，一次查詢所有相關餐廳的資料，避免多次查詢造成效能問題
+        restaurant_details_map = {}
+        if restaurant_ids:
+            try:
+                with get_db_cursor() as cursor:
+                    # 使用 IN 查詢一次抓取所有相關餐廳的資料
+                    format_strings = ','.join(['%s'] * len(restaurant_ids))
+                    sql = f"SELECT * FROM restaurants WHERE ID IN ({format_strings})"
+                    cursor.execute(sql, tuple(restaurant_ids))
+                    db_results = cursor.fetchall()
+                    
+                    # 將結果轉為以 ID 為 Key 的字典
+                    for row in db_results:
+                        restaurant_details_map[str(row['ID'])] = row
+            except Exception as e:
+                print(f"MySQL 查詢出錯: {e}")
+
+        # 組合向量搜尋結果與資料庫詳情
         for i in range(len(results["ids"][0])):
             meta = results["metadatas"][0][i]
             dist = results["distances"][0][i]
             abs_path = results["uris"][0][i]
             
-            # 假設 static/restaurant_photos_1 是你的靜態路徑
+            rest_id = str(meta["id"])
+            db_info = restaurant_details_map.get(rest_id, {})
+
+            # 處理圖片路徑
             relative_url = abs_path.split("static")[-1].replace("\\", "/")
             web_url = f"/static{relative_url}"
 
+            # 優先使用資料庫中的最新資訊，若無則降級使用向量資料庫的 metadata
             formatted.append({
-                "restaurant_name": meta["restaurant_name"],
-                "city": meta["city"],
+                "id": rest_id,
+                "restaurant_name": db_info.get("Name", meta["restaurant_name"]),
+                "city": db_info.get("City", meta["city"]),
+                "address": db_info.get("Add", ""),
+                "cover_image": db_info.get("CoverImage", web_url),
                 "similarity": round(max(0, 100 - (dist * 100)), 2),
                 "distance": round(dist, 4),
                 "image_url": web_url
             })
+
         return formatted
     
 
@@ -154,3 +199,4 @@ class RestaurantSearchService:
             # 搜尋完畢後清理暫存檔案
             if temp_path.exists():
                 os.remove(temp_path)
+                
