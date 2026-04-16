@@ -207,10 +207,10 @@ CREATE TABLE reservations (
             params.extend(city)
         
         sql += " LIMIT 150"
-            
+
         with get_db_cursor() as cursor:
             cursor.execute(sql, tuple(params))
-        return cursor.fetchall()
+            return cursor.fetchall()
 
     # --- 評論與預約邏輯 ---
 
