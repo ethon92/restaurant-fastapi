@@ -14,3 +14,6 @@ wheels/
 
 #作業系統
 .DS_Store
+
+# Chroma 向量資料庫（本機產生，不 commit）
+chroma_db/
