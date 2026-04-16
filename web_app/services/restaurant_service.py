@@ -177,6 +177,7 @@ CREATE TABLE reservations (
                 return []
 
             # Stage 2：若有 reranker，從 MySQL 撈原始 Description 做精排
+            score_map = {}
             if semantic_svc.reranker:
                 id_ph = ', '.join(['%s'] * len(candidate_ids))
                 with get_db_cursor() as cursor:
@@ -186,7 +187,7 @@ CREATE TABLE reservations (
                     )
                     desc_rows = cursor.fetchall()
                 descriptions = {r['ID']: r['Description'] for r in desc_rows if r.get('Description')}
-                candidate_ids = semantic_svc.rerank(q, candidate_ids, descriptions, top_k=limit)
+                candidate_ids, score_map = semantic_svc.rerank(q, candidate_ids, descriptions, top_k=limit)
 
             id_ph = ', '.join(['%s'] * len(candidate_ids))
             sql = f"SELECT * FROM restaurants WHERE ID IN ({id_ph})"
@@ -220,7 +221,10 @@ CREATE TABLE reservations (
 
             with get_db_cursor() as cursor:
                 cursor.execute(sql, tuple(params))
-                return cursor.fetchall()
+                rows = cursor.fetchall()
+            for r in rows:
+                r['_score'] = score_map.get(r['ID'])
+            return rows
 
         # --- 原本的 LIKE 路徑（無 q 或 Chroma 未啟動）---
         sql = "SELECT * FROM restaurants WHERE 1=1"

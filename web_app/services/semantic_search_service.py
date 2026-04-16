@@ -41,13 +41,14 @@ class SemanticSearchService:
         return results["ids"][0]
 
     def rerank(self, query: str, candidate_ids: List[str],
-               descriptions: Dict[str, str], top_k: int = 5) -> List[str]:
+               descriptions: Dict[str, str], top_k: int = 5):
         """
         Stage 2：CrossEncoder 用 MySQL 原始 Description（自然語言）精排
         descriptions: {restaurant_id: description_text}
+        回傳 (ids: List[str], score_map: Dict[str, float])
         """
         if not self.reranker or not descriptions:
-            return candidate_ids[:top_k]
+            return candidate_ids[:top_k], {}
 
         pairs = []
         valid_ids = []
@@ -58,8 +59,10 @@ class SemanticSearchService:
                 valid_ids.append(id_)
 
         if not pairs:
-            return candidate_ids[:top_k]
+            return candidate_ids[:top_k], {}
 
         scores = self.reranker.predict(pairs)
         ranked = sorted(zip(valid_ids, scores), key=lambda x: x[1], reverse=True)
-        return [id_ for id_, _ in ranked[:top_k]]
+        top = ranked[:top_k]
+        score_map = {id_: round(float(s), 4) for id_, s in top}
+        return [id_ for id_, _ in top], score_map
