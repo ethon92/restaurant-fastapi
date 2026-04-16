@@ -11,7 +11,7 @@ load_dotenv()
 
 # 取得目前檔案所在的資料夾路徑，確保讀取 CSV 不會找不到
 base_path = os.path.dirname(os.path.abspath(__file__))
-csv_filename = os.path.join(base_path, "Restaurant_Final_Final.csv")
+csv_filename = os.path.join(base_path, "0402_Restaurantsfinal.csv")
 
 # 資料庫設定
 db_user = os.getenv("DB_USER", "root")
@@ -121,26 +121,29 @@ dtype_mapping = {
 table_name = "restaurants"
 
 try:
-    print(f"🔄 正在寫入資料表 `{table_name}` (這可能需要幾秒鐘)...")
-    
-    # 寫入資料庫
-    df.to_sql(
-        name=table_name,
-        con=engine,
-        if_exists="replace",  # 刪除舊表重建
-        index=False,          # 不寫入 Pandas 的 Index
-        dtype=dtype_mapping   # type: ignore (加上這個保險起見，雖然上面引用已修正)
-    )
-    
-    # --- 最後一步：設定 Primary Key ---
-    # 因為 to_sql 不會自動設 ID 為主鍵，需手動執行 SQL
-    print("🔑 正在設定主鍵 (Primary Key)...")
-    with engine.connect() as conn:
-        conn.execute(text(f"ALTER TABLE {table_name} ADD PRIMARY KEY (ID);"))
-        conn.commit()
-    
+    print(f"🔄 正在更新資料表 `{table_name}` (upsert 模式，不刪舊表)...")
+
+    cols = [c for c in dtype_mapping.keys() if c in df.columns]
+    col_names = ", ".join([f"`{c}`" for c in cols])
+    placeholders = ", ".join([f":{c}" for c in cols])
+    updates = ", ".join([f"`{c}` = VALUES(`{c}`)" for c in cols if c != "ID"])
+
+    upsert_sql = text(f"""
+        INSERT INTO `{table_name}` ({col_names})
+        VALUES ({placeholders})
+        ON DUPLICATE KEY UPDATE {updates}
+    """)
+
+    import math
+    def clean_record(r):
+        return {k: (None if (isinstance(v, float) and math.isnan(v)) else v) for k, v in r.items()}
+    records = [clean_record(r) for r in df[cols].to_dict(orient="records")]
+
+    with engine.begin() as conn:
+        conn.execute(upsert_sql, records)
+
     print("=" * 50)
-    print(f"🎉 大功告成！成功匯入 {len(df)} 筆資料到 `{db_name}` 資料庫！")
+    print(f"🎉 大功告成！成功 upsert {len(df)} 筆資料到 `{db_name}` 資料庫！")
     print("=" * 50)
 
 except Exception as e:
