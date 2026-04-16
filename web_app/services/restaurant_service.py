@@ -107,10 +107,7 @@ CREATE TABLE reservations (
         return restaurant
 
 
-    def search(self, q: str, tags: List[str], city: List[str], price_level: str, skip: int=0, limit: int =5):
-        sql="SELECT * FROM restaurants WHERE 1=1"
-        params = []
-        
+    def search(self, q: str, tags: List[str], city: List[str], price_level: str, skip: int = 0, limit: int = 5, semantic_svc=None):
         has_q = q.strip() != ""
         has_city = city and len(city) > 0 and "全部" not in city
         has_price = price_level != "全部"
@@ -119,6 +116,47 @@ CREATE TABLE reservations (
         if not any([has_q, has_city, has_price, has_tags]):
             return self.get_list(skip=0, limit=20)
 
+        # --- 語意搜尋路徑（有 q + 有 semantic_svc）---
+        if has_q and semantic_svc:
+            candidate_ids = semantic_svc.search(q, top_k=50)
+            if not candidate_ids:
+                return []
+
+            id_ph = ', '.join(['%s'] * len(candidate_ids))
+            sql = f"SELECT * FROM restaurants WHERE ID IN ({id_ph})"
+            params: List[Any] = list(candidate_ids)
+
+            if has_city:
+                city_ph = ', '.join(['%s'] * len(city))
+                sql += f" AND City IN ({city_ph})"
+                params.extend(city)
+
+            if has_price:
+                sql += " AND PriceLevel = %s"
+                params.append(price_level)
+
+            if has_tags:
+                tag_conditions = []
+                for t in tags:
+                    if t.strip():
+                        tag_conditions.append("TagsStr LIKE %s")
+                        params.append(f"%{t.strip()}%")
+                if tag_conditions:
+                    sql += " AND (" + " OR ".join(tag_conditions) + ")"
+
+            # 保留 Chroma 回傳的相似度排序
+            order_ph = ', '.join(['%s'] * len(candidate_ids))
+            sql += f" ORDER BY FIELD(ID, {order_ph})"
+            params.extend(candidate_ids)
+
+            sql += " LIMIT %s OFFSET %s"
+            params.extend([limit, skip])
+
+            with get_db_cursor() as cursor:
+                cursor.execute(sql, tuple(params))
+                return cursor.fetchall()
+
+        # --- 原本的 LIKE 路徑（無 q 或 Chroma 未啟動）---
         sql = "SELECT * FROM restaurants WHERE 1=1"
         params: List[Any] = []
 
@@ -139,14 +177,14 @@ CREATE TABLE reservations (
         if has_tags:
             tag_conditions = []
             for t in tags:
-                if t.strip(): 
+                if t.strip():
                     tag_conditions.append("TagsStr LIKE %s")
                     params.append(f"%{t.strip()}%")
             if tag_conditions:
                 sql += " AND (" + " OR ".join(tag_conditions) + ")"
-        
-        sql += "LIMIT %s OFFSET %s"
-        params.extend([limit,skip])
+
+        sql += " LIMIT %s OFFSET %s"
+        params.extend([limit, skip])
 
         with get_db_cursor() as cursor:
             cursor.execute(sql, tuple(params))
