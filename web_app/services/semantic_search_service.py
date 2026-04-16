@@ -19,15 +19,25 @@ class SemanticSearchService:
             self.reranker = None
             print(f"⚠️  Cross-Encoder 未載入（{e}），使用 bi-encoder 排序")
 
-    def search(self, query: str, recall_k: int = 20) -> List[str]:
-        """Stage 1：ChromaDB bi-encoder 召回，回傳候選 ID list"""
+    def search(self, query: str, recall_k: int = 20,
+               where: dict = None) -> List[str]:
+        """Stage 1：ChromaDB bi-encoder 召回，回傳候選 ID list
+
+        where: ChromaDB metadata 篩選條件，例如 {"has_parking": "True"}
+               多條件用 {"$and": [{"has_parking": "True"}, {"is_late_night": "True"}]}
+        """
         query_simp = self.t2s.convert(query)
         query_emb = self.model.encode([query_simp]).tolist()
-        results = self.collection.query(
+
+        kwargs = dict(
             query_embeddings=query_emb,
             n_results=recall_k,
             include=["distances"],
         )
+        if where:
+            kwargs["where"] = where
+
+        results = self.collection.query(**kwargs)
         return results["ids"][0]
 
     def rerank(self, query: str, candidate_ids: List[str],

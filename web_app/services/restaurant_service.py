@@ -107,6 +107,28 @@ CREATE TABLE reservations (
         return restaurant
 
 
+    # ── 私有：從查詢字串萃取 ChromaDB metadata 篩選條件 ──────────────
+    def _extract_chroma_filters(self, query: str) -> dict:
+        """
+        從自然語言查詢萃取結構化 metadata 篩選條件。
+        ChromaDB metadata 值皆以字串形式儲存（"True"/"False"）。
+        """
+        conditions = []
+
+        # 停車場
+        if any(kw in query for kw in ["停車", "開車", "停車場", "有位停"]):
+            conditions.append({"has_parking": "True"})
+
+        # 深夜 / 宵夜營業
+        if any(kw in query for kw in ["深夜", "宵夜", "消夜", "半夜", "凌晨", "通宵", "晚點"]):
+            conditions.append({"is_late_night": "True"})
+
+        if len(conditions) == 0:
+            return {}
+        if len(conditions) == 1:
+            return conditions[0]
+        return {"$and": conditions}
+
     def search(self, q: str, tags: List[str], city: List[str], price_level: str, skip: int = 0, limit: int = 5, semantic_svc=None):
         has_q = q.strip() != ""
         has_city = city and len(city) > 0 and "全部" not in city
@@ -118,8 +140,9 @@ CREATE TABLE reservations (
 
         # --- 語意搜尋路徑（有 q + 有 semantic_svc）---
         if has_q and semantic_svc:
-            # Stage 1：ChromaDB bi-encoder 召回 20 筆候選
-            candidate_ids = semantic_svc.search(q, recall_k=20)
+            # Stage 1：ChromaDB bi-encoder 召回 20 筆候選（含 metadata pre-filter）
+            chroma_where = self._extract_chroma_filters(q)
+            candidate_ids = semantic_svc.search(q, recall_k=20, where=chroma_where or None)
             if not candidate_ids:
                 return []
 
