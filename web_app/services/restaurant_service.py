@@ -118,9 +118,22 @@ CREATE TABLE reservations (
 
         # --- 語意搜尋路徑（有 q + 有 semantic_svc）---
         if has_q and semantic_svc:
-            candidate_ids = semantic_svc.search(q, top_k=50)
+            # Stage 1：ChromaDB bi-encoder 召回 20 筆候選
+            candidate_ids = semantic_svc.search(q, recall_k=20)
             if not candidate_ids:
                 return []
+
+            # Stage 2：若有 reranker，從 MySQL 撈原始 Description 做精排
+            if semantic_svc.reranker:
+                id_ph = ', '.join(['%s'] * len(candidate_ids))
+                with get_db_cursor() as cursor:
+                    cursor.execute(
+                        f"SELECT ID, Description FROM restaurants WHERE ID IN ({id_ph})",
+                        tuple(candidate_ids)
+                    )
+                    desc_rows = cursor.fetchall()
+                descriptions = {r['ID']: r['Description'] for r in desc_rows if r.get('Description')}
+                candidate_ids = semantic_svc.rerank(q, candidate_ids, descriptions, top_k=limit)
 
             id_ph = ', '.join(['%s'] * len(candidate_ids))
             sql = f"SELECT * FROM restaurants WHERE ID IN ({id_ph})"
@@ -144,7 +157,7 @@ CREATE TABLE reservations (
                 if tag_conditions:
                     sql += " AND (" + " OR ".join(tag_conditions) + ")"
 
-            # 保留 Chroma 回傳的相似度排序
+            # 保留 rerank 後的排序
             order_ph = ', '.join(['%s'] * len(candidate_ids))
             sql += f" ORDER BY FIELD(ID, {order_ph})"
             params.extend(candidate_ids)
