@@ -1,4 +1,13 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
+from fastapi import (
+    APIRouter,
+    UploadFile,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Depends,
+    Header,
+)
 from pydantic import BaseModel
 from web_app.mysql_connection import get_db_cursor
 from web_app.utils.security import hash_password, verify_password
@@ -27,6 +36,12 @@ import secrets
 import hashlib
 import os, uuid, imghdr
 
+# =========================
+# JWT 相關
+# =========================
+from datetime import datetime, timedelta, timezone
+from jose import jwt, JWTError
+
 # ============================================================
 # Avatar upload settings (存後端 static)
 # ============================================================
@@ -36,7 +51,6 @@ ALLOWED_MIME = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 AVATAR_DIR = os.path.join("static", "avatars")
 os.makedirs(AVATAR_DIR, exist_ok=True)
 
-
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ============================================================
@@ -44,6 +58,14 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # 規則：6~15 碼、至少 1 個英文、至少 1 個數字、僅限英數
 # ============================================================
 PASSWORD_RULE = re.compile(r"^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,15}$")
+
+# ============================================================
+# JWT 設定
+# ============================================================
+# ⚠️ 正式環境請一定要改成放在 .env，不要把真正金鑰寫死在專案裡
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev_super_secret_key_change_me")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "120"))  # 2 小時
 
 
 def _validate_password_or_400(password: str):
@@ -56,6 +78,87 @@ def _validate_password_or_400(password: str):
             status_code=400,
             detail="Password must be 6-15 chars and include letters and numbers",
         )
+
+
+# ============================================================
+# JWT helper functions
+# ============================================================
+def create_access_token(data: dict, expires_minutes: int = JWT_EXPIRE_MINUTES) -> str:
+    """
+    建立 JWT access token
+
+    token payload 內會放：
+    - sub: 使用者 id（字串）
+    - email
+    - role
+    - exp: 過期時間
+    """
+    to_encode = data.copy()
+
+    expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
+    to_encode.update({"exp": expire})
+
+    token = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    return token
+
+
+def decode_access_token(token: str) -> dict:
+    """
+    解碼 JWT token
+    - 驗證失敗 / 過期都會丟 401
+    """
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
+    """
+    取得目前登入者資訊
+    前端需在 header 帶：
+    Authorization: Bearer <token>
+
+    回傳：
+    {
+        "user_id": int,
+        "email": str,
+        "role": "admin" / "user"
+    }
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header missing")
+
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+
+    token = authorization.replace("Bearer ", "").strip()
+    payload = decode_access_token(token)
+
+    user_id = payload.get("sub")
+    email = payload.get("email")
+    role = payload.get("role")
+
+    if not user_id or not email or not role:
+        raise HTTPException(status_code=401, detail="Token payload invalid")
+
+    return {
+        "user_id": int(user_id),
+        "email": email,
+        "role": role,
+    }
+
+
+def get_current_admin(current_user: dict = Depends(get_current_user)) -> dict:
+    """
+    管理員專用 dependency
+    之後只要在管理 API 上加 Depends(get_current_admin)
+    就能擋掉一般會員
+    """
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
 
 
 # ============================================================
@@ -95,6 +198,12 @@ def create_table(cursor):
 async def register(payload: RegisterPayload):
 
     # 先檢查 email 是否已存在
+
+    """
+    註冊新會員
+    - user_role 預設 0 = 一般使用者
+    - 若要手動做超級管理員，建議直接用 SQL 把某個帳號 user_role 改成 1
+    """
     check_sql = "SELECT user_id FROM users WHERE user_email = %s"
     insert_sql = """
         INSERT INTO users
@@ -123,7 +232,7 @@ async def register(payload: RegisterPayload):
                 payload.email,
                 hashed_pwd,
                 payload.birthday,
-                0,
+                0,  # 預設一般會員
             ),
         )
 
@@ -132,6 +241,24 @@ async def register(payload: RegisterPayload):
 
 @router.post("/login")
 async def login(payload: LoginPayload):
+    """
+    登入：
+    1) 驗證 email / password
+    2) 依照 user_role 產生 role
+    3) 回傳 JWT access_token + user 基本資訊
+
+    回傳格式：
+    {
+        "message": "login ok",
+        "access_token": "...",
+        "token_type": "bearer",
+        "user": {
+            "id": 1,
+            "email": "...",
+            "role": "admin" / "user"
+        }
+    }
+    """
     sql = """
         SELECT user_id, user_email, user_password, user_role
         FROM users
@@ -150,19 +277,64 @@ async def login(payload: LoginPayload):
     if not verify_password(payload.password, user["user_password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
+    role = "admin" if user["user_role"] else "user"
+
+    access_token = create_access_token(
+        {
+            "sub": str(user["user_id"]),
+            "email": user["user_email"],
+            "role": role,
+        }
+    )
+
     return {
         "message": "login ok",
+        "access_token": access_token,
+        "token_type": "bearer",
         "user": {
             "id": user["user_id"],
             "email": user["user_email"],
-            "role": "admin" if user["user_role"] else "user",
+            "role": role,
         },
     }
 
 
 @router.post("/logout")
 async def logout():
+    """
+    目前 JWT 採前端刪 token 即視為登出
+    若之後要做到「強制失效 token」，要再加黑名單機制
+    """
     return {"message": "logout ok"}
+
+
+@router.get("/me")
+async def get_me(current_user: dict = Depends(get_current_user)):
+    """
+    讓前端用 token 直接確認目前登入者
+    很適合前端重整頁面後重新還原登入狀態
+    """
+    sql = """
+        SELECT user_id, user_name, user_email, user_birthday, user_role, user_phone
+        FROM users
+        WHERE user_id = %s
+        LIMIT 1
+    """
+    with get_db_cursor() as cursor:
+        cursor.execute(sql, (current_user["user_id"],))
+        user = cursor.fetchone()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "id": user["user_id"],
+        "name": user["user_name"],
+        "email": user["user_email"],
+        "birthday": str(user["user_birthday"]) if user["user_birthday"] else "",
+        "role": "admin" if user["user_role"] else "user",
+        "phone": user["user_phone"] or "",
+    }
 
 
 # ------------------------------------------------------------
@@ -412,7 +584,20 @@ def clear_user_avatar_path(user_id: int):
 
 
 @router.post("/profile")
-async def profile(payload: GetProfilePayload):
+async def profile(
+    payload: GetProfilePayload,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    取得會員資料
+    規則：
+    - 一般 user 只能查自己的資料
+    - admin 可以查任何人的資料
+    """
+    if current_user["role"] != "admin" and current_user["user_id"] != payload.user_id:
+        raise HTTPException(
+            status_code=403, detail="You can only access your own profile"
+        )
     sql = """
         SELECT user_id, user_name, user_email, user_birthday, user_role, user_phone
         FROM users
@@ -437,7 +622,10 @@ async def profile(payload: GetProfilePayload):
 
 
 @router.post("/change-password")
-async def change_password(payload: ChangePasswordPayload):
+async def change_password(
+    payload: ChangePasswordPayload,
+    current_user: dict = Depends(get_current_user),
+):
     """
     已登入修改密碼（與 ForgotPassword/OTP 完全分開）
     payload:
@@ -451,6 +639,15 @@ async def change_password(payload: ChangePasswordPayload):
     3) 檢查新密碼規則
     4) hash new_password 後更新
     """
+    """
+    已登入修改密碼
+    - 一般 user 只能改自己的
+    - admin 也只能改自己的（避免用此 API 幫別人改密碼造成混亂）
+    """
+    if current_user["user_id"] != payload.user_id:
+        raise HTTPException(
+            status_code=403, detail="You can only change your own password"
+        )
 
     # 0) 新密碼規則檢查（沿用統一規則）
     _validate_password_or_400(payload.new_password)
@@ -497,14 +694,19 @@ async def change_password(payload: ChangePasswordPayload):
 
 
 @router.put("/profile")
-async def update_profile(payload: UpdateProfilePayload):
+async def update_profile(
+    payload: UpdateProfilePayload,
+    current_user: dict = Depends(get_current_user),
+):
     """
-    更新會員基本資料（需輸入目前密碼）
-    可更新：
-      - user_name
-      - user_birthday
-      - user_phone（可空，送 "" 視為清空）
+    更新會員基本資料
+    - 一般 user 只能改自己的
+    - admin 也可改自己；若未來要讓 admin 改別人，建議另外做 admin 專用 API，不要混在這支
     """
+    if current_user["user_id"] != payload.user_id:
+        raise HTTPException(
+            status_code=403, detail="You can only update your own profile"
+        )
 
     # 1) 先查使用者（拿到 password hash）
     select_sql = """
@@ -558,7 +760,11 @@ async def update_profile(payload: UpdateProfilePayload):
 # 上傳/更換：POST /auth/avatar
 # ============================================================
 @router.post("/avatar")
-async def upload_avatar(user_id: int = Form(...), file: UploadFile = File(...)):
+async def upload_avatar(
+    user_id: int = Form(...),
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
     # ✅ 先確認 user_id 存在
     with get_db_cursor() as cursor:
         cursor.execute("SELECT user_id FROM users WHERE user_id=%s LIMIT 1", (user_id,))
@@ -569,6 +775,8 @@ async def upload_avatar(user_id: int = Form(...), file: UploadFile = File(...)):
     - 存到 static/avatars/
     - DB 更新 users.avatar_path
     - 若舊的存在：刪舊檔（避免 static 堆垃圾）
+    - 一般 user 只能上傳自己的
+    - admin 若要改別人的頭貼，建議未來另開 admin API
     """
     # 1) MIME 檢查
     if file.content_type not in ALLOWED_MIME:
@@ -616,11 +824,23 @@ async def upload_avatar(user_id: int = Form(...), file: UploadFile = File(...)):
 # 取得可用 URL：GET /auth/avatar-url
 # ============================================================
 @router.get("/avatar-url")
-def get_avatar_url(request: Request, user_id: int):
+def get_avatar_url(
+    request: Request,
+    user_id: int,
+    current_user: dict = Depends(get_current_user),
+):
     """
+    取得頭貼 URL
+    - 一般 user 只能查自己的
+    - admin 可查任何人的（方便後台）
     前端顯示用：回傳完整 URL
     - 如果沒頭貼：回傳空字串
     """
+    if current_user["role"] != "admin" and current_user["user_id"] != user_id:
+        raise HTTPException(
+            status_code=403, detail="You can only access your own avatar"
+        )
+
     avatar_path = get_user_avatar_path(user_id)
     if not avatar_path:
         return {"url": ""}
@@ -633,12 +853,21 @@ def get_avatar_url(request: Request, user_id: int):
 # 刪除：DELETE /auth/avatar
 # ============================================================
 @router.delete("/avatar")
-def delete_avatar(user_id: int):
+def delete_avatar(
+    user_id: int,
+    current_user: dict = Depends(get_current_user),
+):
     """
     移除大頭貼：
+    - 一般 user 只能刪自己的
     - 刪檔
     - DB 清空 avatar_path
     """
+    if current_user["user_id"] != user_id:
+        raise HTTPException(
+            status_code=403, detail="You can only delete your own avatar"
+        )
+
     avatar_path = get_user_avatar_path(user_id)
     if avatar_path:
         fs_path = "." + avatar_path
