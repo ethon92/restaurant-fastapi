@@ -43,7 +43,10 @@ from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 
 # ============================================================
-# Avatar upload settings (存後端 static)
+# Avatar upload settings
+# 用於一般會員頭貼功能。
+# 管理員前端目前採固定 icon，不提供更換大頭貼 UI。
+# 後端 API 先保留，避免影響既有會員功能。
 # ============================================================
 MAX_AVATAR_BYTES = 2 * 1024 * 1024  # 2MB
 ALLOWED_MIME = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
@@ -621,29 +624,38 @@ async def profile(
     }
 
 
+# ============================================================
+# admin
+# ============================================================
+@router.get("/admin/users")
+def get_all_users(current_admin: dict = Depends(get_current_admin)):
+    return {"message": "only admin can access"}
+
+
 @router.post("/change-password")
 async def change_password(
     payload: ChangePasswordPayload,
     current_user: dict = Depends(get_current_user),
 ):
     """
-    已登入修改密碼（與 ForgotPassword/OTP 完全分開）
-    payload:
-      - user_id
-      - current_password
-      - new_password
+        已登入修改密碼（與 ForgotPassword/OTP 完全分開）
 
-    流程：
-    1) 查 user_password hash
-    2) verify current_password
-    3) 檢查新密碼規則
-    4) hash new_password 後更新
-    """
-    """
-    已登入修改密碼
+    規則：
     - 一般 user 只能改自己的
-    - admin 也只能改自己的（避免用此 API 幫別人改密碼造成混亂）
+    - admin 目前也只能改自己的，避免混用此 API 幫別人改密碼
+
+        payload:
+          - user_id
+          - current_password
+          - new_password
+
+        流程：
+        1) 查 user_password hash
+        2) verify current_password
+        3) 檢查新密碼規則
+        4) hash new_password 後更新
     """
+
     if current_user["user_id"] != payload.user_id:
         raise HTTPException(
             status_code=403, detail="You can only change your own password"
@@ -765,6 +777,11 @@ async def upload_avatar(
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
 ):
+    # ✅ 目前規則：只能修改自己的頭貼
+    if current_user["user_id"] != user_id:
+        raise HTTPException(
+            status_code=403, detail="You can only update your own avatar"
+        )
     # ✅ 先確認 user_id 存在
     with get_db_cursor() as cursor:
         cursor.execute("SELECT user_id FROM users WHERE user_id=%s LIMIT 1", (user_id,))
@@ -775,8 +792,8 @@ async def upload_avatar(
     - 存到 static/avatars/
     - DB 更新 users.avatar_path
     - 若舊的存在：刪舊檔（避免 static 堆垃圾）
-    - 一般 user 只能上傳自己的
-    - admin 若要改別人的頭貼，建議未來另開 admin API
+    - 目前規則：不分 admin / user，都只能上傳自己的頭貼
+    - 若未來要讓 admin 修改別人的頭貼，建議另開 admin 專用 API
     """
     # 1) MIME 檢查
     if file.content_type not in ALLOWED_MIME:
