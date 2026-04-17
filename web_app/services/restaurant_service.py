@@ -107,6 +107,37 @@ CREATE TABLE reservations (
         return restaurant
 
 
+    # ── 查詢關鍵字 → TagsStr 料理分類對照表 ────────────────────────
+    _CUISINE_MAP = {
+        # 料理類型
+        "美式":   "美式料理",
+        "泰式":   "泰式料理",
+        "義式":   "義式料理",
+        "日式":   "日式料理",
+        "中式":   "中式料理",
+        "韓式":   "韓式料理",
+        "法式":   "法式料理",
+        "印度":   "印度料理",
+        "越式":   "越式料理",
+        "西班牙": "西班牙料理",
+        "海鮮":   "海鮮料理",
+        # 用餐風格
+        "火鍋":   "火鍋",
+        "燒烤":   "燒烤",
+        "素食":   "素食",
+        "早午餐": "早午餐",
+        "下午茶": "甜點下午茶",
+        "甜點":   "甜點下午茶",
+        "景觀":   "景觀餐廳",
+        "約會":   "浪漫約會",
+        "網美":   "網美打卡",
+        "親子":   "親子友善",
+        "寵物":   "寵物友善",
+        # 小吃 / 庶民
+        "小吃":   "在地小吃",
+        "小吃店": "在地小吃",
+    }
+
     # ── 城市關鍵字 → ChromaDB city 值對照表 ─────────────────────────
     _CITY_MAP = {
         "台北": ["臺北市"], "臺北": ["臺北市"],
@@ -130,6 +161,15 @@ CREATE TABLE reservations (
         "馬祖": ["連江縣"], "連江": ["連江縣"],
     }
 
+    # ── 私有：從查詢字串偵測料理類型，回傳要注入 SQL 的 tag list ────
+    def _extract_cuisine_tags(self, query: str) -> List[str]:
+        """從自然語言查詢偵測料理/風格關鍵字，回傳對應的 TagsStr 值。"""
+        detected = []
+        for kw, tag_value in self._CUISINE_MAP.items():
+            if kw in query and tag_value not in detected:
+                detected.append(tag_value)
+        return detected
+
     # ── 私有：從查詢字串萃取 ChromaDB metadata 篩選條件 ──────────────
     def _extract_chroma_filters(self, query: str) -> dict:
         """
@@ -144,6 +184,23 @@ CREATE TABLE reservations (
             if kw in query:
                 conditions.append({"city": {"$in": cities}})
                 break  # 只取第一個命中的城市
+
+        # 店家類別偵測：對應 ChromaDB metadata 的 category 欄位
+        # ChromaDB 現有值：特色餐廳 / 特色店家 / 複合式咖啡館 / 甜點冰品店 / 咖啡廳 / 質感餐酒館
+        _CATEGORY_FILTER_MAP = [
+            (["小吃", "小吃店", "庶民", "路邊攤", "在地"],
+             ["特色店家"]),
+            (["甜點", "冰品", "剉冰", "冰店", "冰淇淋"],
+             ["甜點冰品店"]),
+            (["咖啡", "咖啡廳", "café", "cafe"],
+             ["複合式咖啡館", "咖啡廳"]),
+            (["餐酒", "酒吧", "酒館", "bar"],
+             ["質感餐酒館"]),
+        ]
+        for keywords, categories in _CATEGORY_FILTER_MAP:
+            if any(kw in query for kw in keywords):
+                conditions.append({"category": {"$in": categories}})
+                break  # 只套用第一個命中的分類
 
         # 停車場
         if any(kw in query for kw in ["停車", "開車", "停車場", "有位停"]):
