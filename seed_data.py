@@ -11,7 +11,7 @@ load_dotenv()
 
 # 取得目前檔案所在的資料夾路徑，確保讀取 CSV 不會找不到
 base_path = os.path.dirname(os.path.abspath(__file__))
-csv_filename = os.path.join(base_path, "0402_Restaurantsfinal.csv")
+csv_filename = os.path.join(base_path, "0408_V6_2_Final_Fixed_Results.csv")
 
 # 資料庫設定
 db_user = os.getenv("DB_USER", "root")
@@ -91,6 +91,34 @@ text_columns = ['Name', 'Description', 'Add', 'TagsStr', 'City', 'Town', 'Servic
 for col in text_columns:
     if col in df.columns:
         df[col] = df[col].apply(remove_emojis)
+
+# --- 清洗 C：從 Tags / Category 組出 TagsStr（0408 檔案特有）---
+import ast
+
+def build_tagsstr(row):
+    if isinstance(row.get('TagsStr'), str) and row['TagsStr'].strip():
+        return row['TagsStr']
+    tags_raw = row.get('Tags', '')
+    category = str(row.get('Category', '') or '').strip()
+    if isinstance(tags_raw, str) and tags_raw.strip():
+        try:
+            parsed = ast.literal_eval(tags_raw)
+            parts = []
+            if parsed.get('category'):
+                parts.append(parsed['category'])
+            for s in parsed.get('scenario', []):
+                if s not in parts:
+                    parts.append(s)
+            if parts:
+                return ','.join(parts)
+        except Exception:
+            pass
+    return category
+
+if 'Tags' in df.columns or 'Category' in df.columns:
+    df['TagsStr'] = df.apply(build_tagsstr, axis=1)
+    filled = (df['TagsStr'].notna() & (df['TagsStr'] != '')).sum()
+    print(f"🏷️  TagsStr 自動補齊：{filled} 筆")
 
 print(f"📊 準備匯入 {len(df)} 筆清洗後的資料...")
 
