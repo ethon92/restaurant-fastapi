@@ -63,6 +63,11 @@ class SemanticSearchService:
 
         scores = self.reranker.predict(pairs)
         ranked = sorted(zip(valid_ids, scores), key=lambda x: x[1], reverse=True)
-        top = ranked[:top_k]
+
+        # 相關性門檻：低於此分數代表沒有好答案，不硬推
+        # 0.35 以下視為與查詢無關，直接過濾掉
+        MIN_SCORE = 0.35
+        top = [(id_, s) for id_, s in ranked if float(s) >= MIN_SCORE][:top_k]
+
         score_map = {id_: round(float(s), 4) for id_, s in top}
         return [id_ for id_, _ in top], score_map
