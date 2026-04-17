@@ -223,7 +223,7 @@ CREATE TABLE reservations (
                 cursor.execute(sql, tuple(params))
                 rows = cursor.fetchall()
             for r in rows:
-                r['_score'] = score_map.get(r['ID'])
+                r['match_score'] = score_map.get(r['ID'])
             return rows
 
         # --- 原本的 LIKE 路徑（無 q 或 Chroma 未啟動）---
