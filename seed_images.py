@@ -37,8 +37,9 @@ def refresh_restaurant_images(csv_path, photos_dir):
             continue
             
         # 挑選前三張圖片
-        selected_photos = sorted(photos)[:3]
-        for photo_file in selected_photos:
+        # selected_photos = sorted(photos)[:3]
+        # 全部食物圖片都存入資料庫
+        for photo_file in photos:
             image_url = f"/restaurant_photos/{rest_name}/{photo_file}"
             insert_data.append((rest_id, image_url))
 
@@ -76,5 +77,4 @@ def refresh_restaurant_images(csv_path, photos_dir):
         print(f"資料庫更新失敗: {e}")
 
 if __name__ == "__main__":
-    # 執行路徑請確保正確
     refresh_restaurant_images('Restaurants.csv', './Food')
