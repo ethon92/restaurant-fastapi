@@ -250,10 +250,22 @@ CREATE TABLE reservations (
             sql = f"SELECT * FROM restaurants WHERE ID IN ({id_ph})"
             params: List[Any] = list(candidate_ids)
 
+            # 從查詢文字偵測城市，補 MySQL 層過濾
+            # （ChromaDB $and + $in 有時不可靠，在 MySQL 層加一道保險）
+            query_cities = []
+            for kw, cities_val in self._CITY_MAP.items():
+                if kw in q:
+                    query_cities = cities_val
+                    break
+
             if has_city:
                 city_ph = ', '.join(['%s'] * len(city))
                 sql += f" AND City IN ({city_ph})"
                 params.extend(city)
+            elif query_cities:
+                city_ph = ', '.join(['%s'] * len(query_cities))
+                sql += f" AND City IN ({city_ph})"
+                params.extend(query_cities)
 
             if has_price:
                 sql += " AND PriceLevel = %s"
