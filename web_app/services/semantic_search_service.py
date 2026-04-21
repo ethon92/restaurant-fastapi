@@ -64,6 +64,12 @@ class SemanticSearchService:
         scores = self.reranker.predict(pairs)
         ranked = sorted(zip(valid_ids, scores), key=lambda x: x[1], reverse=True)
 
+        # Debug：印出 Stage 2 全部分數，診斷門檻是否過濾掉好答案
+        print(f"[Rerank] query='{query}' 全部候選分數：")
+        for id_, s in ranked:
+            name = descriptions.get(id_, id_)[:15]
+            print(f"  {round(float(s), 4):>6}  {id_}")
+
         # 相關性門檻：低於此分數代表沒有好答案，不硬推
         # 0.35 以下視為與查詢無關，直接過濾掉
         MIN_SCORE = 0.35
