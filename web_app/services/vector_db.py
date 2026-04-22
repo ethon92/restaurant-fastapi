@@ -1,7 +1,6 @@
 import os
 import pandas as pd
 import chromadb
-from chromadb.utils.embedding_functions import OpenCLIPEmbeddingFunction
 from chromadb.utils.data_loaders import ImageLoader
 from tqdm import tqdm
 import shutil
@@ -9,6 +8,9 @@ import uuid
 from pathlib import Path
 from web_app.mysql_connection import get_db_cursor
 
+from chromadb.utils.embedding_functions import OpenCLIPEmbeddingFunction
+# 從環境變數讀取 Hugging Face Token
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 class PhotoSearchService:
     def __init__(self, db_path: str, collection_name: str):
