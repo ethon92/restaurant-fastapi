@@ -3,6 +3,7 @@ from web_app.routes.feature import router as favorite_router
 from web_app.routes.account import router as account_router
 from web_app.routes.restaurant import router as restaurant_router
 from web_app.routes.account import router as booking_record_router
+from web_app.routes.behavior import router as behavior_router
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -44,6 +45,8 @@ app.include_router(booking_record_router)
 app.include_router(auth_router)
 # 加入 admin
 app.include_router(admin.router)
+# 加入 behavior
+app.include_router(behavior_router)
 
 
 @app.get("/")
