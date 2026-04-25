@@ -297,6 +297,7 @@ CREATE TABLE reservations (
             with get_db_cursor() as cursor:
                 cursor.execute(sql, tuple(params))
                 rows = cursor.fetchall()
+                #把 AI 算的「匹配度分數」貼回到 MySQL 抓出來的餐廳資料上，這樣前端才能顯示「相關度：95%」
             for r in rows:
                 r['match_score'] = score_map.get(r['ID'])
             return rows
