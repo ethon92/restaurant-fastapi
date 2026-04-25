@@ -243,22 +243,14 @@ CREATE TABLE reservations (
             # 有 chroma filter 時多召回，讓 CrossEncoder 有足夠候選可選
             chroma_where = self._extract_chroma_filters(q)
             recall_k = 50 if chroma_where else 20
-            candidate_ids = semantic_svc.search(q, recall_k=recall_k, where=chroma_where or None)
+            candidate_ids, doc_map = semantic_svc.search(q, recall_k=recall_k, where=chroma_where or None)
             if not candidate_ids:
                 return []
 
-            # Stage 2：ChromaDB documents（精煉描述）做 CrossEncoder 精排
+            # Stage 2：CrossEncoder 用 ChromaDB Refined_Text 精排（不需再查 MySQL）
             score_map = {}
             if semantic_svc.reranker:
-                chroma_result = semantic_svc.collection.get(
-                    ids=candidate_ids, include=["documents"]
-                )
-                descriptions = {
-                    id_: doc
-                    for id_, doc in zip(chroma_result["ids"], chroma_result["documents"])
-                    if doc
-                }
-                candidate_ids, score_map = semantic_svc.rerank(q, candidate_ids, descriptions, top_k=limit)
+                candidate_ids, score_map = semantic_svc.rerank(q, candidate_ids, doc_map, top_k=limit)
 
             id_ph = ', '.join(['%s'] * len(candidate_ids))
             sql = f"SELECT * FROM restaurants WHERE ID IN ({id_ph})"

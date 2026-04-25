@@ -20,9 +20,10 @@ class SemanticSearchService:
             print(f"⚠️  Cross-Encoder 未載入（{e}），使用 bi-encoder 排序")
 
     def search(self, query: str, recall_k: int = 20,
-               where: dict = None) -> List[str]:
-        """Stage 1：ChromaDB bi-encoder 召回，回傳候選 ID list
+               where: dict = None):
+        """Stage 1：ChromaDB bi-encoder 召回，回傳 (candidate_ids, doc_map)
 
+        doc_map: {restaurant_id: refined_text}，直接供 CrossEncoder 使用，不需再查 MySQL。
         where: ChromaDB metadata 篩選條件，例如 {"has_parking": "True"}
                多條件用 {"$and": [{"has_parking": "True"}, {"is_late_night": "True"}]}
         """
@@ -32,19 +33,22 @@ class SemanticSearchService:
         kwargs = dict(
             query_embeddings=query_emb,
             n_results=recall_k,
-            include=["distances"],
+            include=["distances", "documents"],
         )
         if where:
             kwargs["where"] = where
 
         results = self.collection.query(**kwargs)
-        return results["ids"][0]
+        ids = results["ids"][0]
+        docs = results["documents"][0]
+        doc_map = {id_: doc for id_, doc in zip(ids, docs) if doc}
+        return ids, doc_map
 
     def rerank(self, query: str, candidate_ids: List[str],
                descriptions: Dict[str, str], top_k: int = 5):
         """
-        Stage 2：CrossEncoder 用 MySQL 原始 Description（自然語言）精排
-        descriptions: {restaurant_id: description_text}
+        Stage 2：CrossEncoder 用 ChromaDB Refined_Text 精排
+        descriptions: {restaurant_id: refined_text}
         回傳 (ids: List[str], score_map: Dict[str, float])
         """
         if not self.reranker or not descriptions:
