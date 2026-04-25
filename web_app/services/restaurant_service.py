@@ -185,22 +185,34 @@ CREATE TABLE reservations (
                 conditions.append({"city": {"$in": cities}})
                 break  # 只取第一個命中的城市
 
-        # 店家類別偵測：對應 ChromaDB metadata 的 category 欄位
-        # ChromaDB 現有值：特色餐廳 / 在地小吃 / 複合式咖啡館 / 甜點冰品店 / 咖啡廳 / 質感餐酒館
+        # 店家類別偵測
         _CATEGORY_FILTER_MAP = [
-            (["小吃", "小吃店", "庶民", "路邊攤", "在地"],
-             ["在地小吃"]),
-            (["甜點", "冰品", "剉冰", "冰店", "冰淇淋"],
-             ["甜點冰品店"]),
-            (["咖啡", "咖啡廳", "café", "cafe"],
-             ["複合式咖啡館", "咖啡廳"]),
-            (["餐酒", "酒吧", "酒館", "bar"],
-             ["質感餐酒館"]),
+            (["小吃", "小吃店", "庶民", "路邊攤", "在地"], ["在地小吃", "特色店家"]),
+            (["甜點", "冰品", "剉冰", "冰店", "冰淇淋"],   ["甜點冰品店"]),
+            (["咖啡", "咖啡廳", "café", "cafe"],            ["複合式咖啡館", "咖啡廳"]),
+            (["餐酒", "酒吧", "酒館", "bar"],               ["質感餐酒館"]),
+            (["特色", "創意", "主題"],                       ["特色餐廳", "特色店家"]),
         ]
         for keywords, categories in _CATEGORY_FILTER_MAP:
             if any(kw in query for kw in keywords):
                 conditions.append({"category": {"$in": categories}})
-                break  # 只套用第一個命中的分類
+                break
+
+        # 情境偵測：各 scenario 存為獨立 boolean 欄位
+        _SCENARIO_FILTER_MAP = [
+            (["約會", "情侶", "浪漫", "燭光", "紀念日"], "s_romance"),
+            (["家庭", "長輩", "合菜", "聚餐"],           "s_family"),
+            (["文青", "網美", "質感", "拍照"],           "s_artsy"),
+            (["景觀", "夜景", "戶外"],                   "s_scenic"),
+            (["親子", "小孩", "兒童"],                   "s_kids"),
+            (["日式", "和風", "居酒屋"],                 "s_japanese"),
+            (["在地", "老店", "傳統", "古早"],           "s_local"),
+            (["小酌", "微醺", "調酒"],                   "s_bar"),
+        ]
+        for keywords, field in _SCENARIO_FILTER_MAP:
+            if any(kw in query for kw in keywords):
+                conditions.append({field: "True"})
+                break
 
         # 停車場
         if any(kw in query for kw in ["停車", "開車", "停車場", "有位停"]):
@@ -227,23 +239,25 @@ CREATE TABLE reservations (
 
         # --- 語意搜尋路徑（有 q + 有 semantic_svc）---
         if has_q and semantic_svc:
-            # Stage 1：ChromaDB bi-encoder 召回 20 筆候選（含 metadata pre-filter）
+            # Stage 1：ChromaDB bi-encoder 召回候選
+            # 有 chroma filter 時多召回，讓 CrossEncoder 有足夠候選可選
             chroma_where = self._extract_chroma_filters(q)
-            candidate_ids = semantic_svc.search(q, recall_k=20, where=chroma_where or None)
+            recall_k = 50 if chroma_where else 20
+            candidate_ids = semantic_svc.search(q, recall_k=recall_k, where=chroma_where or None)
             if not candidate_ids:
                 return []
 
-            # Stage 2：若有 reranker，從 MySQL 撈原始 Description 做精排
+            # Stage 2：ChromaDB documents（精煉描述）做 CrossEncoder 精排
             score_map = {}
             if semantic_svc.reranker:
-                id_ph = ', '.join(['%s'] * len(candidate_ids))
-                with get_db_cursor() as cursor:
-                    cursor.execute(
-                        f"SELECT ID, Description FROM restaurants WHERE ID IN ({id_ph})",
-                        tuple(candidate_ids)
-                    )
-                    desc_rows = cursor.fetchall()
-                descriptions = {r['ID']: r['Description'] for r in desc_rows if r.get('Description')}
+                chroma_result = semantic_svc.collection.get(
+                    ids=candidate_ids, include=["documents"]
+                )
+                descriptions = {
+                    id_: doc
+                    for id_, doc in zip(chroma_result["ids"], chroma_result["documents"])
+                    if doc
+                }
                 candidate_ids, score_map = semantic_svc.rerank(q, candidate_ids, descriptions, top_k=limit)
 
             id_ph = ', '.join(['%s'] * len(candidate_ids))
