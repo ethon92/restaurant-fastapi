@@ -38,7 +38,17 @@ class SemanticSearchService:
         if where:
             kwargs["where"] = where
 
-        results = self.collection.query(**kwargs)
+        # 當 filter 條件命中的文件數少於 n_results，ChromaDB 會拋錯
+        # 依序縮小 n_results 直到成功
+        while kwargs["n_results"] >= 1:
+            try:
+                results = self.collection.query(**kwargs)
+                break
+            except Exception:
+                kwargs["n_results"] = kwargs["n_results"] // 2
+                if kwargs["n_results"] < 1:
+                    return [], {}
+
         ids = results["ids"][0]
         docs = results["documents"][0]
         doc_map = {id_: doc for id_, doc in zip(ids, docs) if doc}
@@ -76,7 +86,7 @@ class SemanticSearchService:
 
         # 相關性門檻：低於此分數代表沒有好答案，不硬推
         # 0.35 以下視為與查詢無關，直接過濾掉
-        MIN_SCORE = 0.35
+        MIN_SCORE = 0.30
         top = [(id_, s) for id_, s in ranked if float(s) >= MIN_SCORE][:top_k]
 
         score_map = {id_: round(float(s), 4) for id_, s in top}
