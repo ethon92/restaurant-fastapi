@@ -4,7 +4,8 @@
         "dotenv",
         "executemany",
         "lastrowid",
-        "metadatas"
+        "metadatas",
+        "tidb"
     ],
     "workbench.colorCustomizations": {
         "activityBar.background": "#0E3418",

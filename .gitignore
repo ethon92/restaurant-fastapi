@@ -14,3 +14,6 @@ wheels/
 
 #作業系統
 .DS_Store
+
+# windows系統ssl憑證，由於TiDB Cloud 需要使用 SSL 連線
+isrgrootx1.pem
