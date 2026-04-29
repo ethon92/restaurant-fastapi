@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 class FavoriteRestaurant(BaseModel):
     user_id: int
@@ -24,3 +24,7 @@ class updateRestaurantComment(BaseModel):
 
 class UpdateCommentStatus(BaseModel):
     booking_id: int
+
+# 以圖推薦餐廳
+class ImageSearchParams(BaseModel):
+    city: str = Field(default="", description="搜尋的縣市")

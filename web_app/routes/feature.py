@@ -6,31 +6,10 @@ from web_app.models.feature import updateRestaurantComment
 from web_app.mysql_connection import get_db_cursor
 import pymysql
 from typing import Annotated
-
+from web_app.services.favorite_service import FavoriteService
 
 router = APIRouter()
-
-
-# 建立table函式
-def create_table(cursor):
-    create_query = """
-        create table favorite(
-            fav_id int primary key auto_increment,
-            user_id int not null,
-            restaurant_id varchar(50) not null,
-            fav_note varchar(300)
-        )
-        """
-    cursor.execute("show tables like %s", ("favorite"))
-    result = cursor.fetchone()
-
-    # 當沒有table時才建立
-    if result is None:
-        try:
-            cursor.execute(create_query)
-            print("favorite table is created!!")
-        except pymysql.Error as e:
-            print(f"Error create favorite table: {e}")
+favorite_service = FavoriteService()
 
 
 # 建立comment的table
@@ -58,148 +37,56 @@ def create_comments_table(cursor):
 
 # 新增收藏餐廳路由
 @router.post("/favorite")
-def add_favorite(favorite: FavoriteRestaurant):
-    try:
-        # 在favorite中放入資料
-        # 注意:提交資料要commit記得設為True
-        with get_db_cursor(commit=True) as cursor:
-            create_table(cursor)
-            # 檢查此筆資料是否存在
-            cursor.execute(
-                "select * from favorite where user_id=%s and restaurant_id=%s",
-                (favorite.user_id, favorite.restaurant_id),
-            )
-            result = cursor.fetchone()
-            # 若已加入丟出409錯誤
-            if result is not None:
-                raise HTTPException(status_code=409, detail="已加入收藏餐廳中!!")
-
-            sql = "insert into favorite(user_id, restaurant_id, fav_note) values(%s, %s, %s)"
-            cursor.execute(
-                sql, (favorite.user_id, favorite.restaurant_id, favorite.fav_note)
-            )
-            return {"status": "Success"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
+async def add_favorite_api(fav: FavoriteRestaurant):
+    if favorite_service.add_favorite(fav):
+        return {"status": "Success"}
+    raise HTTPException(status_code=400, detail="新增失敗")
 
 
 # 查詢收藏餐廳路由從使用者頁面
 @router.get("/favorite/{user_id}")
-# 設定user_id必須大於0
-def get_favorite(user_id: Annotated[int, Path(title="The ID of user", gt=0)]):
-    try:
-        with get_db_cursor() as cursor:
-            sql = """
-                select fav_id favId, user_id userId, fav_note favNote, Name name, CoverImage coverImage, restaurant_id restaurantId
-                from favorite join restaurants on restaurant_id = ID 
-                where user_id =%s
-            """
-            cursor.execute(sql, (user_id))
-            results = cursor.fetchall()
-        return {"status": "Success", "user_id": user_id, "results": results}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
+async def get_my_favorites(user_id: int):
+    results = favorite_service.get_favorite_list_with_detail(user_id)
+    return {"status": "success", "user_id": user_id, "results": results}
 
-# 查詢收藏餐廳路由從餐廳頁面
+
+# 取得收藏餐廳路由從餐廳頁面
 @router.get("/favorite/{user_id}/{restaurant_id}")
-# 設定user_id必須大於0
-def get_favorite_restaurant(user_id: Annotated[int, Path(title="The ID of user", gt=0)], restaurant_id: str):
+async def get_favorite_restaurant(user_id: int, restaurant_id: str):
     try:
-        with get_db_cursor() as cursor:
-            sql = """
-                select fav_id from favorite where user_id =%s and restaurant_id=%s
-            """
-            cursor.execute(sql, (user_id, restaurant_id))
-            results = cursor.fetchone()
-            
-            if results is None:
-                exit_or_not = False
-            else:
-                exit_or_not = True
-        return {"status": "Success", "results": exit_or_not}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
+        exists = favorite_service.is_favorite(user_id, restaurant_id)
 
-# 刪除收藏餐廳路由從使用這頁面
+        return {"status": "Success", "results": exists}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"伺服器錯誤: {e}")
+
+
+# 刪除收藏餐廳路由從使用者頁面
 @router.delete("/favorite/{fav_id}")
-def delete_favorite(
-    fav_id: Annotated[int, Path(title="The ID of user", gt=0)]):
-    try:
-        with get_db_cursor(commit=True) as cursor:
-            # 檢查此筆資料是否存在
-            cursor.execute(
-                "select * from favorite where fav_id=%s",
-                (fav_id),
-            )
-            result = cursor.fetchone()
-            # 若不存在丟出404錯誤
-            if not result:
-                raise HTTPException(status_code=404, detail="沒有此筆資料!!")
-            delete_sql = "delete from favorite where fav_id=%s"
-            cursor.execute(delete_sql, (fav_id))
-            return {
-                "status": "Success",
-            }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
+async def remove_favorite(fav_id: int):
+    if favorite_service.delete_by_id(fav_id):
+        return {"status": "Success"}
+    raise HTTPException(status_code=400, detail="刪除失敗")
 
-# 刪除收藏餐廳路由從餐廳頁面
+
+# 取消收藏餐廳路由從餐廳頁面
 @router.delete("/favorite/{user_id}/{restaurant_id}")
-def delete_favorite_restaurant(
-    user_id: Annotated[int, Path(title="The ID of user", gt=0)], restaurant_id: str
-):
-    try:
-        with get_db_cursor(commit=True) as cursor:
-            # 檢查此筆資料是否存在
-            cursor.execute(
-                "select * from favorite where user_id=%s and restaurant_id=%s",
-                (user_id, restaurant_id),
-            )
-            result = cursor.fetchone()
-            # 若不存在丟出404錯誤
-            if not result:
-                raise HTTPException(status_code=404, detail="沒有此筆資料!!")
-            delete_sql = "delete from favorite where user_id=%s and restaurant_id=%s"
-            cursor.execute(delete_sql, (user_id, restaurant_id))
-            return {
-                "status": "Success",
-            }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
+def delete_favorite_restaurant(user_id: int, restaurant_id: str):
+    success = favorite_service.delete_by_user_and_restaurant(user_id, restaurant_id)
+
+    if not success:
+        # 如果失敗（可能是沒資料或資料庫錯誤），拋出錯誤
+        raise HTTPException(status_code=404, detail="刪除失敗，可能無此收藏記錄")
+
+    return {"status": "Success"}
+
 
 # 更新收藏餐廳路由
 @router.put("/favorite")
-def update_favorite(update: UpdateFavorite):
-    try:
-        with get_db_cursor(commit=True) as cursor:
-            # 檢查此筆資料是否存在
-            cursor.execute(
-                "select * from favorite where fav_id=%s",
-                (update.fav_id),
-            )
-            result = cursor.fetchone()
-            # 若不存在丟出404錯誤
-            if not result:
-                raise HTTPException(status_code=404, detail="沒有此筆資料!!")
-            update_sql = (
-                "update favorite set fav_note=%s where fav_id=%s"
-            )
-            cursor.execute(
-                update_sql, (update.fav_note, update.fav_id)
-            )
-            return {
-                "status": "Success",
-            }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"資料庫錯誤: {e}")
+async def update_favorite_api(update_data: UpdateFavorite):
+    if favorite_service.update_favorite_notes(update_data):
+        return {"status": "Success"}
+    raise HTTPException(status_code=400, detail="更新失敗")
 
 
 # 新增評論餐廳路由

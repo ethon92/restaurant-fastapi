@@ -11,7 +11,7 @@ load_dotenv()
 
 # 取得目前檔案所在的資料夾路徑，確保讀取 CSV 不會找不到
 base_path = os.path.dirname(os.path.abspath(__file__))
-csv_filename = os.path.join(base_path, "Restaurant_Final_Final.csv")
+csv_filename = os.path.join(base_path, "Restaurants.csv")
 
 # 資料庫設定
 db_user = os.getenv("DB_USER", "root")

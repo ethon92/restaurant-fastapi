@@ -2,7 +2,10 @@
     "cSpell.words": [
         "cursorclass",
         "dotenv",
-        "lastrowid"
+        "executemany",
+        "lastrowid",
+        "metadatas",
+        "tidb"
     ],
     "workbench.colorCustomizations": {
         "activityBar.background": "#0E3418",
