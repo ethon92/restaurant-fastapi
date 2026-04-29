@@ -5,15 +5,27 @@ from web_app.routes.restaurant import router as restaurant_router
 from web_app.routes.account import router as booking_record_router
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
 import os
 from web_app.routes.auth import router as auth_router
-
+from web_app.services.semantic_search_service import SemanticSearchService
 
 # 1. 引入 develop 分支的 Router (收藏功能)
-
 from web_app.routes import restaurant
 
-app = FastAPI()
+CHROMA_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "chroma_db")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        app.state.semantic = SemanticSearchService(chroma_path=CHROMA_PATH)
+        print("✅ Chroma 語意搜尋引擎已載入")
+    except Exception as e:
+        app.state.semantic = None
+        print(f"⚠️  Chroma 未載入（{e}），搜尋將使用 LIKE 模式")
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 # CORS 設定 (保留 HEAD 的設定) 
 app.add_middleware(

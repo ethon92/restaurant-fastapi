@@ -17,3 +17,6 @@ wheels/
 
 # windows系統ssl憑證，由於TiDB Cloud 需要使用 SSL 連線
 isrgrootx1.pem
+
+# Chroma 向量資料庫（本機產生，不 commit）
+chroma_db/

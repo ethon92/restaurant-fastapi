@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, Path
+from fastapi import APIRouter, HTTPException, Query, Path, Request
 from typing import List, Optional, Annotated
 from web_app.models.schema import ReservationRequest, RestaurantSchema
 from web_app.services.restaurant_service import RestaurantService
@@ -22,6 +22,7 @@ async def get_all_restaurants(skip: int = 0, limit: int = 20):
 # 2. [連動搜尋 API]
 @router.get("/api/search", response_model=List[RestaurantSchema])
 def search_restaurants(
+    request: Request,
     q: Optional[str] = None,
     city: List[str] = Query(default=[]),
     tags: List[str] = Query(default=[]),
@@ -29,13 +30,10 @@ def search_restaurants(
     skip: int = 0,
     limit: int = 5,
 ):
+    semantic_svc = getattr(request.app.state, "semantic", None)
     return service.search(
-        q=q or "",
-        city=city,
-        tags=tags,
-        price_level=price_level or "全部",
-        skip=skip,
-        limit=limit,
+        q=q or "", city=city, tags=tags, price_level=price_level or "全部",
+        skip=skip, limit=limit, semantic_svc=semantic_svc
     )
 
 

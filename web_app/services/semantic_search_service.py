@@ -1,0 +1,93 @@
+import chromadb
+from sentence_transformers import SentenceTransformer
+from sentence_transformers.cross_encoder import CrossEncoder
+from opencc import OpenCC
+from typing import List, Dict
+
+
+class SemanticSearchService:
+    def __init__(self, chroma_path: str):
+        self.model = SentenceTransformer("shibing624/text2vec-base-chinese")
+        self.t2s = OpenCC("t2s")
+        self.client = chromadb.PersistentClient(path=chroma_path)
+        self.collection = self.client.get_collection("restaurants")
+
+        try:
+            self.reranker = CrossEncoder("BAAI/bge-reranker-base", max_length=512)
+            print("✅ Cross-Encoder 精排模型已載入")
+        except Exception as e:
+            self.reranker = None
+            print(f"⚠️  Cross-Encoder 未載入（{e}），使用 bi-encoder 排序")
+
+    def search(self, query: str, recall_k: int = 20,
+               where: dict = None):
+        """Stage 1：ChromaDB bi-encoder 召回，回傳 (candidate_ids, doc_map)
+
+        doc_map: {restaurant_id: refined_text}，直接供 CrossEncoder 使用，不需再查 MySQL。
+        where: ChromaDB metadata 篩選條件，例如 {"has_parking": "True"}
+               多條件用 {"$and": [{"has_parking": "True"}, {"is_late_night": "True"}]}
+        """
+        query_simp = self.t2s.convert(query)
+        query_emb = self.model.encode([query_simp]).tolist()
+
+        kwargs = dict(
+            query_embeddings=query_emb,
+            n_results=recall_k,
+            include=["distances", "documents"],
+        )
+        if where:
+            kwargs["where"] = where
+
+        # 當 filter 條件命中的文件數少於 n_results，ChromaDB 會拋錯
+        # 依序縮小 n_results 直到成功
+        while kwargs["n_results"] >= 1:
+            try:
+                results = self.collection.query(**kwargs)
+                break
+            except Exception:
+                kwargs["n_results"] = kwargs["n_results"] // 2
+                if kwargs["n_results"] < 1:
+                    return [], {}
+
+        ids = results["ids"][0]
+        docs = results["documents"][0]
+        doc_map = {id_: doc for id_, doc in zip(ids, docs) if doc}
+        return ids, doc_map
+
+    def rerank(self, query: str, candidate_ids: List[str],
+               descriptions: Dict[str, str], top_k: int = 5):
+        """
+        Stage 2：CrossEncoder 用 ChromaDB Refined_Text 精排
+        descriptions: {restaurant_id: refined_text}
+        回傳 (ids: List[str], score_map: Dict[str, float])
+        """
+        if not self.reranker or not descriptions:
+            return candidate_ids[:top_k], {}
+
+        pairs = []
+        valid_ids = []
+        for id_ in candidate_ids:
+            desc = descriptions.get(id_, "")
+            if desc:
+                pairs.append([query, desc])
+                valid_ids.append(id_)
+
+        if not pairs:
+            return candidate_ids[:top_k], {}
+
+        scores = self.reranker.predict(pairs)
+        ranked = sorted(zip(valid_ids, scores), key=lambda x: x[1], reverse=True)
+
+        # Debug：印出 Stage 2 全部分數，診斷門檻是否過濾掉好答案
+        print(f"[Rerank] query='{query}' 全部候選分數：")
+        for id_, s in ranked:
+            name = descriptions.get(id_, id_)[:15]
+            print(f"  {round(float(s), 4):>6}  {id_}")
+
+        # 相關性門檻：低於此分數代表沒有好答案，不硬推
+        # 0.35 以下視為與查詢無關，直接過濾掉
+        MIN_SCORE = 0.30
+        top = [(id_, s) for id_, s in ranked if float(s) >= MIN_SCORE][:top_k]
+
+        score_map = {id_: round(float(s), 4) for id_, s in top}
+        return [id_ for id_, _ in top], score_map
