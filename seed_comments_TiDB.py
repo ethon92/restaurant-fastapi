@@ -26,13 +26,14 @@ if not all([db_user, db_password, db_host, db_name]):
 
 # 2. 建立支援 SSL 的 SQLAlchemy Engine
 def create_tidb_engine(database):
+    encoded_password = quote_plus(db_password)
     connect_args = {
         "ssl": {
             "ca": ca_path
         }
     }
     # 使用 mysql+pymysql 驅動連線至 TiDB
-    connection_str = f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{database}?charset=utf8mb4"
+    connection_str = f"mysql+pymysql://{db_user}:{encoded_password}@{db_host}:{db_port}/{database}?charset=utf8mb4"
     return create_engine(connection_str, connect_args=connect_args)
 
 engine = create_tidb_engine(db_name)
@@ -45,6 +46,8 @@ CREATE TABLE IF NOT EXISTS comments (
     restaurant_id VARCHAR(50) NOT NULL,             
     comment_content TEXT NOT NULL,   
     rating INT NOT NULL CHECK(rating >= 1 AND rating <= 5),
+    sentiment VARCHAR(20),                
+    tags JSON,
     comment_time DATETIME DEFAULT CURRENT_TIMESTAMP 
 );
 """

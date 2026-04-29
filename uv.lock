@@ -1256,14 +1256,13 @@ wheels = [
 ]
 
 [[package]]
-<<<<<<< HEAD
 name = "opencc-python-reimplemented"
 version = "0.1.7"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/8d/6d/c6f37eed651dd6b752e50f80a93396cdaa42a6acc6ce05ad7452303ea511/opencc-python-reimplemented-0.1.7.tar.gz", hash = "sha256:4f777ea3461a25257a7b876112cfa90bb6acabc6dfb843bf4d11266e43579dee", size = 482566, upload-time = "2023-02-11T03:58:42.25Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/6b/055b7806f320cc8f2cdf23c5f70221c0dc1683fca9ffaf76dfc2ad4b91b6/opencc_python_reimplemented-0.1.7-py2.py3-none-any.whl", hash = "sha256:41b3b92943c7bed291f448e9c7fad4b577c8c2eae30fcfe5a74edf8818493aa6", size = 481813, upload-time = "2023-02-11T03:58:39.66Z" },
-=======
+    { url = "https://files.pythonhosted.org/packages/30/6b/055b7806f320cc8f2cdf23c5f70221c0dc1683fca9ffaf76dfc2ad4b91b6/opencc_python_reimplemented-0.1.7-py2.py3-none-any.whl", hash = "sha256:41b3b92943c7bed291f448e9c7fad4b577c8c2eae30fcfe5a74edf8818493aa6", size = 481813, upload-time = "2023-02-11T03:58:39.66Z" },]
+[[package]]
 name = "nvidia-cublas"
 version = "13.1.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1553,7 +1552,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/6d/c0/4ae7973f3c2cfd2b6e321f1675626f0dab0a97027cc7a297474c9c8f3d04/opentelemetry_semantic_conventions-0.61b0.tar.gz", hash = "sha256:072f65473c5d7c6dc0355b27d6c9d1a679d63b6d4b4b16a9773062cb7e31192a", size = 145755, upload-time = "2026-03-04T14:17:32.664Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b2/37/cc6a55e448deaa9b27377d087da8615a3416d8ad523d5960b78dbeadd02a/opentelemetry_semantic_conventions-0.61b0-py3-none-any.whl", hash = "sha256:fa530a96be229795f8cef353739b618148b0fe2b4b3f005e60e262926c4d38e2", size = 231621, upload-time = "2026-03-04T14:17:19.33Z" },
->>>>>>> develop
 ]
 
 [[package]]
@@ -2290,12 +2288,9 @@ dependencies = [
     { name = "chromadb" },
     { name = "cryptography" },
     { name = "fastapi", extra = ["all"] },
-<<<<<<< HEAD
     { name = "opencc-python-reimplemented" },
-=======
     { name = "huggingface-hub" },
     { name = "open-clip-torch" },
->>>>>>> develop
     { name = "pandas" },
     { name = "pymysql" },
     { name = "snownlp" },
@@ -2308,12 +2303,9 @@ requires-dist = [
     { name = "chromadb", specifier = ">=1.5.5" },
     { name = "cryptography", specifier = ">=46.0.3" },
     { name = "fastapi", extras = ["all"], specifier = ">=0.125.0" },
-<<<<<<< HEAD
     { name = "opencc-python-reimplemented", specifier = ">=0.1.7" },
-=======
     { name = "huggingface-hub", extras = ["cli"], specifier = ">=1.9.0" },
     { name = "open-clip-torch", specifier = ">=3.3.0" },
->>>>>>> develop
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "pymysql", specifier = ">=1.1.2" },
     { name = "snownlp", specifier = ">=0.12.3" },
