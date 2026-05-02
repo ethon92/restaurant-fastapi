@@ -33,8 +33,10 @@ print(f"🔨 正在檢查資料庫 `{db_name}`...")
 
 try:
     # 先連線到 MySQL 系統層 (不指定 db)
+    ca_path = os.getenv("TIDB_CA_PATH", "/etc/ssl/cert.pem")
+    ssl_args = {"ssl": {"ca": ca_path}}
     root_conn_str = f"mysql+pymysql://{db_user}:{encoded_password}@{db_host}:{db_port}/mysql?charset=utf8mb4"
-    root_engine = create_engine(root_conn_str)
+    root_engine = create_engine(root_conn_str, connect_args=ssl_args)
     
     with root_engine.connect() as conn:
         conn.execute(text(f"CREATE DATABASE IF NOT EXISTS {db_name};"))
@@ -47,7 +49,7 @@ except Exception as e:
 try:
     # 指定連線到 db_name，並強制使用 utf8mb4
     connection_str = f"mysql+pymysql://{db_user}:{encoded_password}@{db_host}:{db_port}/{db_name}?charset=utf8mb4"
-    engine = create_engine(connection_str)
+    engine = create_engine(connection_str, connect_args=ssl_args)
     print(f"✅ 成功連線到 `{db_name}`！")
 except Exception as e:
     print(f"❌ 連線失敗: {e}")
