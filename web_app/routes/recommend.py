@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from web_app.mysql_connection import get_db_cursor
+from web_app.utils.llm_utils import generate_llm_reasons_for_list
 from datetime import date, datetime
 from collections import Counter
 from typing import Dict
@@ -372,6 +373,9 @@ def get_hot_restaurants(limit=10):
         for item in restaurants:
             item["recommend_score"] = 0
             item["recommend_reason"] = "新會員探索推薦"
+            item["recommend_source"] = "hot"
+            item["recommend_reason_tags"] = []
+            item["llm_reason"] = ""
 
         return restaurants
 
@@ -407,6 +411,15 @@ def get_hot_restaurants(limit=10):
             score=item["recommend_score"],
             is_hot=True,
         )
+
+        # 熱門 fallback 的來源
+        item["recommend_source"] = "hot"
+
+        # 熱門推薦不是因為某個 tag 命中
+        item["recommend_reason_tags"] = []
+
+        # 熱門推薦先不呼叫 LLM
+        item["llm_reason"] = ""
 
     restaurants = sorted(
         restaurants,
@@ -751,6 +764,9 @@ async def get_recommend(user_id: int):
         # 這次推薦理由實際命中的 tag
         item["recommend_reason_tags"] = reason_info["tags"]
 
+        # 先給空字串，後面 Top-N 排序完成後再產生 LLM 理由
+        item["llm_reason"] = ""
+
         # 把這一筆推薦餐廳加入推薦結果
         recommend_results.append(item)
 
@@ -769,6 +785,11 @@ async def get_recommend(user_id: int):
     if not recommend_results:
         used_fallback = True
         recommend_results = get_hot_restaurants(TOP_N)
+
+    else:
+        # 只對 Top-N 的前幾筆產生 LLM 推薦理由
+        # 預設 llm_utils.py 裡 max_llm_count=5
+        recommend_results = generate_llm_reasons_for_list(recommend_results)
 
     return {
         "data": recommend_results,
