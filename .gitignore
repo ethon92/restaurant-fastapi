@@ -20,3 +20,7 @@ isrgrootx1.pem
 
 # Chroma 向量資料庫（本機產生，不 commit）
 chroma_db/
+chroma.sqlite3
+web_app/dine_vector/chroma.sqlite3
+chroma/
+
