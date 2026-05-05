@@ -47,7 +47,7 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
 
 # Ollama 模型名稱
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b")
 
 
 def _source_to_zh(source: str) -> str:
@@ -82,6 +82,76 @@ def _safe_join(items: List[str], limit: int = 3) -> str:
     """
     clean_items = [str(x).strip() for x in items if str(x).strip()]
     return "、".join(clean_items[:limit])
+
+
+def _clean_llm_reason(
+    text: str, fallback: str = "", restaurant_name: str = "這間餐廳"
+) -> str:
+    """
+    清理 LLM 產生的推薦理由，避免：
+    1. 句子太長
+    2. 說到一半被截斷
+    3. 出現換行、引號、項目符號
+    4. 沒有句號結尾
+    5. 太像「因為...所以...」模板句
+    """
+
+    if not text:
+        return fallback or ""
+
+    # 去掉換行與多餘空白
+    text = str(text).replace("\n", " ").replace("\r", " ").strip()
+
+    # 去掉常見引號
+    text = text.strip("「」『』\"'` ")
+
+    # 如果模型偷加「推薦理由：」這類前綴，移除掉
+    prefixes = ["推薦理由：", "推薦理由:", "理由：", "理由:"]
+    for prefix in prefixes:
+        if text.startswith(prefix):
+            text = text.replace(prefix, "", 1).strip()
+
+    # 優先取第一句完整句子
+    sentence_endings = ["。", "！", "？", "!", "?"]
+    first_end_index = -1
+
+    for mark in sentence_endings:
+        idx = text.find(mark)
+        if idx != -1:
+            if first_end_index == -1 or idx < first_end_index:
+                first_end_index = idx
+
+    if first_end_index != -1:
+        text = text[: first_end_index + 1]
+
+    # ✅ 太短或太模板，就不要直接用 LLM 原句
+    bad_patterns = [
+        "因為你",
+        "所以推薦",
+        "推薦給你",
+        "類型的餐廳",
+        "收藏過",
+    ]
+
+    is_too_short = len(text) < 24
+    is_too_template = any(pattern in text for pattern in bad_patterns)
+
+    if is_too_short or is_too_template:
+        return f"這間{restaurant_name}風格和你近期偏好的餐廳相近，適合下次想聚餐或約會時參考。"
+
+    max_len = 60
+    if len(text) > max_len:
+        text = text[:max_len]
+
+        # 如果最後不是標點，就補句號，避免看起來像說到一半
+        if text[-1] not in sentence_endings:
+            text += "。"
+
+    # 如果完全沒有結尾標點，也補句號
+    if text and text[-1] not in sentence_endings:
+        text += "。"
+
+    return text
 
 
 def generate_llm_recommend_reason(
@@ -152,11 +222,21 @@ def generate_llm_recommend_reason(
 【輸出規則】
 1. 請使用繁體中文。
 2. 只輸出一句話，不要換行。
-3. 字數控制在 25～45 個中文字左右。
-4. 語氣自然，像 App 裡的推薦文案。
-5. 不要提到演算法、TF-IDF、Cosine Similarity、分數。
-6. 不要誇大，不要寫「最好吃」「一定喜歡」「保證」。
-7. 不要使用引號。
+3. 字數控制在 35～55 個中文字左右。
+4. 句子一定要完整，最後必須用「。」結尾。
+5. 不要使用「因為」、「所以」、「推薦給你」這種模板句。
+6. 語氣自然，像 App 裡的推薦文案，不要照抄原始推薦理由。
+7. 可以描述餐廳氛圍、料理特色、適合情境。
+8. 不要提到演算法、TF-IDF、Cosine Similarity、分數。
+9. 不要誇大，不要寫「最好吃」「一定喜歡」「保證」。
+10. 不要使用引號。
+
+【好的範例】
+你最近偏好浪漫聚餐氛圍，這間餐廳環境舒適，很適合安排一場放鬆的小約會。
+這間餐廳的特色料理和你常看的類型接近，適合下次想換口味時收藏起來。
+如果想找一間氣氛輕鬆又有特色的餐廳，這裡會是很適合聚餐的選擇。
+
+請直接輸出推薦文案：
 """
 
     payload = {
@@ -171,9 +251,10 @@ def generate_llm_recommend_reason(
         "stream": False,
         "options": {
             # temperature 低一點，文案比較穩定
-            "temperature": 0.6,
-            # 限制輸出長度，避免模型講太多
-            "num_predict": 80,
+            "temperature": 0.7,
+            # 給模型多一點空間產生完整句子
+            # 但最後仍會用 _clean_llm_reason() 控制長度
+            "num_predict": 140,
         },
     }
 
@@ -199,10 +280,8 @@ def generate_llm_recommend_reason(
         # }
         text = data.get("message", {}).get("content", "").strip()
 
-        # 保險處理：避免換行
-        text = text.replace("\n", " ").strip()
-
-        return text
+        # ✅ 清理 LLM 文案，避免句子過長或說到一半
+        return _clean_llm_reason(text, fallback=recommend_reason, restaurant_name=name)
 
     except Exception as e:
         # Ollama 沒啟動、模型沒下載、逾時，都不要讓推薦 API 掛掉
