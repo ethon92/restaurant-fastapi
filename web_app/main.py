@@ -29,12 +29,9 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(lifespan=lifespan)
 from web_app.routes import admin
 
-# 1. 引入 develop 分支的 Router (收藏功能)
-
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 
 # CORS 設定 (保留 HEAD 的設定)
 app.add_middleware(
