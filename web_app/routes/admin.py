@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException ,
+from fastapi import APIRouter, HTTPException 
 from web_app.mysql_connection import get_db_cursor
 import pymysql
 from web_app.services.ai_service import analyze_all_comments_with_snow
@@ -22,14 +22,15 @@ async def get_restaurant_status():
             # 3. 平均情感分數 (0~1)
             sql = """
                 SELECT 
-                    r.restaurant_name AS name,
+                    r.Name AS name,
                     COUNT(c.comment_id) AS total_comments,
-                    SUM(CASE WHEN c.sentiment_score <= 0.33 THEN 1 ELSE 0 END) AS bad_comments_count,
-                    AVG(c.sentiment_score) AS sentiment_score
-                FROM restaurant r
-                LEFT JOIN comments c ON r.restaurant_id = c.restaurant_id
-                GROUP BY r.restaurant_id, r.restaurant_name
-                ORDER BY sentiment_score ASC;
+                    SUM(CASE WHEN c.sentiment <= 0.33 THEN 1 ELSE 0 END) AS bad_comments_count,
+                    AVG(c.sentiment) AS sentiment_score
+                FROM restaurants r
+                LEFT JOIN comments c ON r.ID = c.restaurant_id
+                GROUP BY r.ID, r.Name
+                ORDER BY sentiment_score ASC
+                LIMIT 20 
             """
             cursor.execute(sql)
             rows = cursor.fetchall()

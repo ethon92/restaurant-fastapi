@@ -94,7 +94,6 @@ async def update_favorite_api(update_data: UpdateFavorite):
 def add_comment(comments: RestaurantComment):
     try:
         with get_db_cursor(commit=True) as cursor:
-            create_table(cursor)
             sql = "insert into comments(user_id,restaurant_id, comment_content,rating) values(%s,%s,%s,%s)"
             cursor.execute(
                 sql,
