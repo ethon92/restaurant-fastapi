@@ -23,7 +23,6 @@ class LoginPayload(BaseModel):
 # =========================
 # Forgot Password Flow (忘記密碼)
 # - 不需要目前密碼
-# - 使用生日/身分資料驗證
 # =========================
 
 

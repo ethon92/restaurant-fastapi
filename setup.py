@@ -59,6 +59,17 @@ create_users = """
         );
 """
 
+# 會員行為
+create_user_behavior = """
+        CREATE TABLE IF NOT EXISTS user_behavior (
+            `user_behavior_id` INT AUTO_INCREMENT PRIMARY KEY,
+            `user_id` INT NOT NULL,
+            `restaurant_id` VARCHAR(50) NOT NULL,
+            `action_type` VARCHAR(20) NOT NULL, -- click / favorite / booking / search
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 create_reservations = """
 CREATE TABLE reservations (
     booking_id INT AUTO_INCREMENT PRIMARY KEY,

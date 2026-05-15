@@ -37,6 +37,7 @@ class RestaurantSchema(BaseModel):
     ServiceTime: Optional[str] = None
     CoverImage: Optional[str] = None
     images: List[RestaurantImageSchema] = []
+    match_score: Optional[float] = None
     
     class Config:
         from_attributes = True
