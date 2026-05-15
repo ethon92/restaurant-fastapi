@@ -152,14 +152,13 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
         "role": role,
     }
 
-
 def get_current_admin(current_user: dict = Depends(get_current_user)) -> dict:
-    """
-    管理員專用 dependency
-    之後只要在管理 API 上加 Depends(get_current_admin)
-    就能擋掉一般會員
-    """
-    if current_user["role"] != "admin":
+    # 這裡要檢查 current_user['role'] 是否等於 1 (假設 1 是管理員)
+    # 注意：get_current_user 回傳的 key 是 "role"，而 UserOut 是 "user_role"
+    # 建議在 get_current_user 回傳時就統一名稱，或是這裡做轉換
+    
+    role = current_user.get("role")
+    if str(role) != "1" and role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
 

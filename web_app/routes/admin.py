@@ -1,15 +1,18 @@
-from fastapi import APIRouter, HTTPException 
+from fastapi import APIRouter, HTTPException , Depends
 from web_app.mysql_connection import get_db_cursor
 import pymysql
 from web_app.services.ai_service import analyze_all_comments_with_snow
+from web_app.routes.auth import get_current_admin
+from web_app.models.feature import UserOut
+from typing import List
 
-router = APIRouter()
+router = APIRouter(prefix="/admin", tags=["admin"])
 
-@router.post("/api/v1/admin/batch-analyze")
+@router.post("/batch-analyze")
 async def start_analysis():
     count = analyze_all_comments_with_snow()
     return {"status": "success", "message": f"分析完成，共處理 {count} 筆評論"}
-@router.get("/api/v1/admin/restaurant-status")
+@router.get("/restaurant-status")
 async def get_restaurant_status():
     """
     抓取前端表格所需的餐廳營運狀態資料
@@ -50,16 +53,27 @@ async def get_restaurant_status():
 
         except pymysql.MySQLError as e:
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-from fastapi import APIRouter, Depends
-from web_app.routes.auth import get_current_admin
 
-router = APIRouter(prefix="/admin", tags=["admin"])
-
-
-@router.get("/users")
+@router.get("/users", response_model=List[UserOut])
 def get_all_users(current_admin: dict = Depends(get_current_admin)):
-    """
-    取得所有會員資料（目前先做管理員權限測試用）
-    - 只有 role=admin 的使用者可存取
-    """
-    return {"message": "only admin can access"}
+    try:
+        with get_db_cursor() as cursor:
+            # 欄位順序不重要，但名稱必須跟 UserOut 一模一樣
+            sql = """
+                SELECT 
+                    user_name, 
+                    user_email, 
+                    user_phone, 
+                    user_birthday, 
+                    user_role 
+                FROM users
+            """
+            cursor.execute(sql)
+            users = cursor.fetchall()
+            
+            return users if users else []
+
+    except Exception as e:
+        # 這裡建議印出錯誤，方便調試
+        print(f"Error fetching users: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
