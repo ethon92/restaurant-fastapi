@@ -107,10 +107,128 @@ CREATE TABLE reservations (
         return restaurant
 
 
-    def search(self, q: str, tags: List[str], city: List[str], price_level: str, skip: int=0, limit: int =5):
-        sql="SELECT * FROM restaurants WHERE 1=1"
-        params = []
-        
+    # ── 查詢關鍵字 → TagsStr 料理分類對照表 ────────────────────────
+    _CUISINE_MAP = {
+        # 料理類型
+        "美式":   "美式料理",
+        "泰式":   "泰式料理",
+        "義式":   "義式料理",
+        "日式":   "日式料理",
+        "中式":   "中式料理",
+        "韓式":   "韓式料理",
+        "法式":   "法式料理",
+        "印度":   "印度料理",
+        "越式":   "越式料理",
+        "西班牙": "西班牙料理",
+        "海鮮":   "海鮮料理",
+        # 用餐風格
+        "火鍋":   "火鍋",
+        "燒烤":   "燒烤",
+        "素食":   "素食",
+        "早午餐": "早午餐",
+        "下午茶": "甜點下午茶",
+        "甜點":   "甜點下午茶",
+        "景觀":   "景觀餐廳",
+        "約會":   "浪漫約會",
+        "網美":   "網美打卡",
+        "親子":   "親子友善",
+        "寵物":   "寵物友善",
+        # 小吃 / 庶民
+        "小吃":   "在地小吃",
+        "小吃店": "在地小吃",
+    }
+
+    # ── 城市關鍵字 → ChromaDB city 值對照表 ─────────────────────────
+    _CITY_MAP = {
+        "台北": ["臺北市"], "臺北": ["臺北市"],
+        "新北": ["新北市"],
+        "桃園": ["桃園市"],
+        "新竹": ["新竹市", "新竹縣"],
+        "苗栗": ["苗栗縣"],
+        "台中": ["臺中市"], "臺中": ["臺中市"],
+        "彰化": ["彰化縣"],
+        "南投": ["南投縣"],
+        "雲林": ["雲林縣"],
+        "嘉義": ["嘉義市", "嘉義縣"],
+        "台南": ["臺南市"], "臺南": ["臺南市"],
+        "高雄": ["高雄市"],
+        "屏東": ["屏東縣"],
+        "宜蘭": ["宜蘭縣"],
+        "花蓮": ["花蓮縣"],
+        "台東": ["臺東縣"], "臺東": ["臺東縣"],
+        "澎湖": ["澎湖縣"],
+        "金門": ["金門縣"],
+        "馬祖": ["連江縣"], "連江": ["連江縣"],
+    }
+
+    # ── 私有：從查詢字串偵測料理類型，回傳要注入 SQL 的 tag list ────
+    def _extract_cuisine_tags(self, query: str) -> List[str]:
+        """從自然語言查詢偵測料理/風格關鍵字，回傳對應的 TagsStr 值。"""
+        detected = []
+        for kw, tag_value in self._CUISINE_MAP.items():
+            if kw in query and tag_value not in detected:
+                detected.append(tag_value)
+        return detected
+
+    # ── 私有：從查詢字串萃取 ChromaDB metadata 篩選條件 ──────────────
+    def _extract_chroma_filters(self, query: str) -> dict:
+        """
+        從自然語言查詢萃取結構化 metadata 篩選條件。
+        ChromaDB metadata 值皆以字串形式儲存（"True"/"False"）。
+        城市值為完整地名（例如 "臺南市"），用 $in 做模糊縣市匹配。
+        """
+        conditions = []
+
+        # 城市偵測：查詢裡有縣市名就鎖定，排除不相關縣市結果
+        for kw, cities in self._CITY_MAP.items():
+            if kw in query:
+                conditions.append({"city": {"$in": cities}})
+                break  # 只取第一個命中的城市
+
+        # 店家類別偵測
+        _CATEGORY_FILTER_MAP = [
+            (["小吃", "小吃店", "庶民", "路邊攤", "在地"], ["在地小吃", "特色店家"]),
+            (["甜點", "冰品", "剉冰", "冰店", "冰淇淋"],   ["甜點冰品店"]),
+            (["咖啡", "咖啡廳", "café", "cafe"],            ["複合式咖啡館", "咖啡廳"]),
+            (["餐酒", "酒吧", "酒館", "bar"],               ["質感餐酒館"]),
+            (["特色", "創意", "主題"],                       ["特色餐廳", "特色店家"]),
+        ]
+        for keywords, categories in _CATEGORY_FILTER_MAP:
+            if any(kw in query for kw in keywords):
+                conditions.append({"category": {"$in": categories}})
+                break
+
+        # 情境偵測：各 scenario 存為獨立 boolean 欄位
+        _SCENARIO_FILTER_MAP = [
+            (["約會", "情侶", "浪漫", "燭光", "紀念日"], "s_romance"),
+            (["家庭", "長輩", "合菜", "聚餐"],           "s_family"),
+            (["文青", "網美", "質感", "拍照"],           "s_artsy"),
+            (["景觀", "夜景", "戶外"],                   "s_scenic"),
+            (["親子", "小孩", "兒童"],                   "s_kids"),
+            (["日式", "和風", "居酒屋"],                 "s_japanese"),
+            (["在地", "老店", "傳統", "古早"],           "s_local"),
+            (["小酌", "微醺", "調酒"],                   "s_bar"),
+        ]
+        for keywords, field in _SCENARIO_FILTER_MAP:
+            if any(kw in query for kw in keywords):
+                conditions.append({field: "True"})
+                break
+
+        # 停車場
+        if any(kw in query for kw in ["停車", "開車", "停車場", "有位停"]):
+            conditions.append({"has_parking": "True"})
+
+        # 深夜 / 宵夜營業
+        if any(kw in query for kw in ["深夜", "宵夜", "消夜", "半夜", "凌晨", "通宵", "晚點"]):
+            conditions.append({"is_late_night": "True"})
+
+        if len(conditions) == 0:
+            return {}
+        if len(conditions) == 1:
+            return conditions[0]
+        return {"$and": conditions}
+
+    def search(self, q: str, tags: List[str], city: List[str], price_level: str, skip: int = 0, limit: int = 5, semantic_svc=None):
         has_q = q.strip() != ""
         has_city = city and len(city) > 0 and "全部" not in city
         has_price = price_level != "全部"
@@ -119,6 +237,72 @@ CREATE TABLE reservations (
         if not any([has_q, has_city, has_price, has_tags]):
             return self.get_list(skip=0, limit=20)
 
+        # --- 語意搜尋路徑（有 q + 有 semantic_svc）---
+        if has_q and semantic_svc:
+            # Stage 1：ChromaDB bi-encoder 召回候選
+            # 有 chroma filter 時多召回，讓 CrossEncoder 有足夠候選可選
+            chroma_where = self._extract_chroma_filters(q)
+            recall_k = 50 if chroma_where else 20
+            candidate_ids, doc_map = semantic_svc.search(q, recall_k=recall_k, where=chroma_where or None)
+            if not candidate_ids:
+                return []
+
+            # Stage 2：CrossEncoder 用 ChromaDB Refined_Text 精排（不需再查 MySQL）
+            score_map = {}
+            if semantic_svc.reranker:
+                candidate_ids, score_map = semantic_svc.rerank(q, candidate_ids, doc_map, top_k=limit)
+
+            id_ph = ', '.join(['%s'] * len(candidate_ids))
+            sql = f"SELECT * FROM restaurants WHERE ID IN ({id_ph})"
+            params: List[Any] = list(candidate_ids)
+
+            # 從查詢文字偵測城市，補 MySQL 層過濾
+            # （ChromaDB $and + $in 有時不可靠，在 MySQL 層加一道保險）
+            query_cities = []
+            for kw, cities_val in self._CITY_MAP.items():
+                if kw in q:
+                    query_cities = cities_val
+                    break
+
+            if has_city:
+                city_ph = ', '.join(['%s'] * len(city))
+                sql += f" AND City IN ({city_ph})"
+                params.extend(city)
+            elif query_cities:
+                city_ph = ', '.join(['%s'] * len(query_cities))
+                sql += f" AND City IN ({city_ph})"
+                params.extend(query_cities)
+
+            if has_price:
+                sql += " AND PriceLevel = %s"
+                params.append(price_level)
+
+            if has_tags:
+                tag_conditions = []
+                for t in tags:
+                    if t.strip():
+                        tag_conditions.append("TagsStr LIKE %s")
+                        params.append(f"%{t.strip()}%")
+                if tag_conditions:
+                    sql += " AND (" + " OR ".join(tag_conditions) + ")"
+
+            # 保留 rerank 後的排序
+            order_ph = ', '.join(['%s'] * len(candidate_ids))
+            sql += f" ORDER BY FIELD(ID, {order_ph})"
+            params.extend(candidate_ids)
+
+            sql += " LIMIT %s OFFSET %s"
+            params.extend([limit, skip])
+
+            with get_db_cursor() as cursor:
+                cursor.execute(sql, tuple(params))
+                rows = cursor.fetchall()
+                #把 AI 算的「匹配度分數」貼回到 MySQL 抓出來的餐廳資料上，這樣前端才能顯示「相關度：95%」
+            for r in rows:
+                r['match_score'] = score_map.get(r['ID'])
+            return rows
+
+        # --- 原本的 LIKE 路徑（無 q 或 Chroma 未啟動）---
         sql = "SELECT * FROM restaurants WHERE 1=1"
         params: List[Any] = []
 
@@ -139,14 +323,14 @@ CREATE TABLE reservations (
         if has_tags:
             tag_conditions = []
             for t in tags:
-                if t.strip(): 
+                if t.strip():
                     tag_conditions.append("TagsStr LIKE %s")
                     params.append(f"%{t.strip()}%")
             if tag_conditions:
                 sql += " AND (" + " OR ".join(tag_conditions) + ")"
-        
-        sql += "LIMIT %s OFFSET %s"
-        params.extend([limit,skip])
+
+        sql += " LIMIT %s OFFSET %s"
+        params.extend([limit, skip])
 
         with get_db_cursor() as cursor:
             cursor.execute(sql, tuple(params))
@@ -169,10 +353,10 @@ CREATE TABLE reservations (
             params.extend(city)
         
         sql += " LIMIT 150"
-            
+
         with get_db_cursor() as cursor:
             cursor.execute(sql, tuple(params))
-        return cursor.fetchall()
+            return cursor.fetchall()
 
     # --- 評論與預約邏輯 ---
 

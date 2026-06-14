@@ -11,7 +11,7 @@ load_dotenv()
 
 # 取得目前檔案所在的資料夾路徑，確保讀取 CSV 不會找不到
 base_path = os.path.dirname(os.path.abspath(__file__))
-csv_filename = os.path.join(base_path, "Restaurant_Final_Final.csv")
+csv_filename = os.path.join(base_path, "Restaurants.csv")
 
 # 資料庫設定
 db_user = os.getenv("DB_USER", "root")
@@ -33,8 +33,10 @@ print(f"🔨 正在檢查資料庫 `{db_name}`...")
 
 try:
     # 先連線到 MySQL 系統層 (不指定 db)
+    ca_path = os.getenv("TIDB_CA_PATH", "/etc/ssl/cert.pem")
+    ssl_args = {"ssl": {"ca": ca_path}}
     root_conn_str = f"mysql+pymysql://{db_user}:{encoded_password}@{db_host}:{db_port}/mysql?charset=utf8mb4"
-    root_engine = create_engine(root_conn_str)
+    root_engine = create_engine(root_conn_str, connect_args=ssl_args)
     
     with root_engine.connect() as conn:
         conn.execute(text(f"CREATE DATABASE IF NOT EXISTS {db_name};"))
@@ -47,7 +49,7 @@ except Exception as e:
 try:
     # 指定連線到 db_name，並強制使用 utf8mb4
     connection_str = f"mysql+pymysql://{db_user}:{encoded_password}@{db_host}:{db_port}/{db_name}?charset=utf8mb4"
-    engine = create_engine(connection_str)
+    engine = create_engine(connection_str, connect_args=ssl_args)
     print(f"✅ 成功連線到 `{db_name}`！")
 except Exception as e:
     print(f"❌ 連線失敗: {e}")
@@ -92,6 +94,34 @@ for col in text_columns:
     if col in df.columns:
         df[col] = df[col].apply(remove_emojis)
 
+# --- 清洗 C：從 Tags / Category 組出 TagsStr（0408 檔案特有）---
+import ast
+
+def build_tagsstr(row):
+    if isinstance(row.get('TagsStr'), str) and row['TagsStr'].strip():
+        return row['TagsStr']
+    tags_raw = row.get('Tags', '')
+    category = str(row.get('Category', '') or '').strip()
+    if isinstance(tags_raw, str) and tags_raw.strip():
+        try:
+            parsed = ast.literal_eval(tags_raw)
+            parts = []
+            if parsed.get('category'):
+                parts.append(parsed['category'])
+            for s in parsed.get('scenario', []):
+                if s not in parts:
+                    parts.append(s)
+            if parts:
+                return ','.join(parts)
+        except Exception:
+            pass
+    return category
+
+if 'Tags' in df.columns or 'Category' in df.columns:
+    df['TagsStr'] = df.apply(build_tagsstr, axis=1)
+    filled = (df['TagsStr'].notna() & (df['TagsStr'] != '')).sum()
+    print(f"🏷️  TagsStr 自動補齊：{filled} 筆")
+
 print(f"📊 準備匯入 {len(df)} 筆清洗後的資料...")
 
 # 5. 定義型別與寫入資料庫
@@ -121,26 +151,29 @@ dtype_mapping = {
 table_name = "restaurants"
 
 try:
-    print(f"🔄 正在寫入資料表 `{table_name}` (這可能需要幾秒鐘)...")
-    
-    # 寫入資料庫
-    df.to_sql(
-        name=table_name,
-        con=engine,
-        if_exists="replace",  # 刪除舊表重建
-        index=False,          # 不寫入 Pandas 的 Index
-        dtype=dtype_mapping   # type: ignore (加上這個保險起見，雖然上面引用已修正)
-    )
-    
-    # --- 最後一步：設定 Primary Key ---
-    # 因為 to_sql 不會自動設 ID 為主鍵，需手動執行 SQL
-    print("🔑 正在設定主鍵 (Primary Key)...")
-    with engine.connect() as conn:
-        conn.execute(text(f"ALTER TABLE {table_name} ADD PRIMARY KEY (ID);"))
-        conn.commit()
-    
+    print(f"🔄 正在更新資料表 `{table_name}` (upsert 模式，不刪舊表)...")
+
+    cols = [c for c in dtype_mapping.keys() if c in df.columns]
+    col_names = ", ".join([f"`{c}`" for c in cols])
+    placeholders = ", ".join([f":{c}" for c in cols])
+    updates = ", ".join([f"`{c}` = VALUES(`{c}`)" for c in cols if c != "ID"])
+
+    upsert_sql = text(f"""
+        INSERT INTO `{table_name}` ({col_names})
+        VALUES ({placeholders})
+        ON DUPLICATE KEY UPDATE {updates}
+    """)
+
+    import math
+    def clean_record(r):
+        return {k: (None if (isinstance(v, float) and math.isnan(v)) else v) for k, v in r.items()}
+    records = [clean_record(r) for r in df[cols].to_dict(orient="records")]
+
+    with engine.begin() as conn:
+        conn.execute(upsert_sql, records)
+
     print("=" * 50)
-    print(f"🎉 大功告成！成功匯入 {len(df)} 筆資料到 `{db_name}` 資料庫！")
+    print(f"🎉 大功告成！成功 upsert {len(df)} 筆資料到 `{db_name}` 資料庫！")
     print("=" * 50)
 
 except Exception as e:

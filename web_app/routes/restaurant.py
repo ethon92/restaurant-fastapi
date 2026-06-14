@@ -1,10 +1,16 @@
-from fastapi import APIRouter, HTTPException, Query, Path
+from fastapi import APIRouter, HTTPException, Query, Path, Request
 from typing import List, Optional, Annotated
 from web_app.models.schema import ReservationRequest, RestaurantSchema
 from web_app.services.restaurant_service import RestaurantService
-
+from fastapi import File, UploadFile, Form, Depends
+from typing import Optional
+from web_app.services.vector_db import RestaurantSearchService
+from web_app.models.feature import ImageSearchParams
 router = APIRouter()
 service = RestaurantService()
+
+# 實例化以圖片推薦餐廳的 Service
+search_logic = RestaurantSearchService()
 
 
 # 1. [全部餐廳列表]
@@ -16,6 +22,7 @@ async def get_all_restaurants(skip: int = 0, limit: int = 20):
 # 2. [連動搜尋 API]
 @router.get("/api/search", response_model=List[RestaurantSchema])
 def search_restaurants(
+    request: Request,
     q: Optional[str] = None,
     city: List[str] = Query(default=[]),
     tags: List[str] = Query(default=[]),
@@ -23,22 +30,50 @@ def search_restaurants(
     skip: int = 0,
     limit: int = 5,
 ):
+    semantic_svc = getattr(request.app.state, "semantic", None)
     return service.search(
-        q=q or "", city=city, tags=tags, price_level=price_level or "全部", skip=skip, limit=limit
+        q=q or "", city=city, tags=tags, price_level=price_level or "全部",
+        skip=skip, limit=limit, semantic_svc=semantic_svc
     )
 
 
 # 3. [地圖搜尋範圍 API]
 @router.get("/api/restaurants/map-search")
 async def get_restaurants_by_bounds(
-    min_lat: float, max_lat: float, min_lng: float, max_lng: float,q: Optional[str] = None, city: List[str] = Query(None)
+    min_lat: float,
+    max_lat: float,
+    min_lng: float,
+    max_lng: float,
+    q: Optional[str] = None,
+    city: List[str] = Query(None),
 ):
-    results = service.get_restaurants_by_bounds(min_lat=min_lat, 
-        max_lat=max_lat, 
-        min_lng=min_lng, 
-        max_lng=max_lng, 
-        q=q, city=city)
+    results = service.get_restaurants_by_bounds(
+        min_lat=min_lat,
+        max_lat=max_lat,
+        min_lng=min_lng,
+        max_lng=max_lng,
+        q=q,
+        city=city,
+    )
     return results if results else []
+
+
+# 以圖片推薦餐廳 API
+@router.post("/api/search/image")
+async def api_search_image(
+    file: UploadFile = File(...),
+    # 使用 Depends 將 Form 欄位對應到 Model
+    params: ImageSearchParams = Depends()
+):
+    try:
+        results = await search_logic.search_by_image(file, params.city)
+        return {
+            "status": "success",
+            "results": results
+        }
+    except Exception as e:
+        # 這裡處理最後的錯誤回傳
+        raise HTTPException(status_code=500, detail=f"搜尋失敗: {str(e)}")
 
 
 # 4. [詳情 API]
@@ -49,13 +84,8 @@ def get_restaurant_detail(id: str):
         raise HTTPException(status_code=404, detail="找不到此餐廳")
     random_images = info.get("images", [])
     info.pop("images", None)
-    return {
-        "status": "Success",
-        "info": info,             
-        "gallery": random_images 
-    }
-    
-    
+    return {"status": "Success", "info": info, "gallery": random_images}
+
     # gallery_images = [info["CoverImage"]] if info.get("CoverImage") else []
     # return {"info": info, "gallery": gallery_images}
 

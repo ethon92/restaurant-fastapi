@@ -2,12 +2,23 @@
     "cSpell.words": [
         "cursorclass",
         "dotenv",
-        "lastrowid"
+        "executemany",
+        "lastrowid",
+        "metadatas",
+        "tidb"
     ],
     "workbench.colorCustomizations": {
         "activityBar.background": "#0E3418",
         "titleBar.activeBackground": "#134922",
-        "titleBar.activeForeground": "#F5FCF7"
+        "titleBar.activeForeground": "#F5FCF7",
+        "titleBar.inactiveBackground": "#0E3418",
+        "titleBar.inactiveForeground": "#F5FCF7",
+        "statusBar.background": "#0E3418",
+        "statusBar.foreground": "#F5FCF7",
+        "statusBar.debuggingBackground": "#0E3418",
+        "statusBar.debuggingForeground": "#F5FCF7",
+        "statusBar.noFolderBackground": "#0E3418",
+        "statusBar.noFolderForeground": "#F5FCF7"
     },
     "python-envs.pythonProjects": []
 
